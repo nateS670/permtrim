@@ -54,13 +54,17 @@ def run_demo() -> int:
             print(f"      wildcard {wildcard['pattern']} grants {wildcard['concrete_action_count']} actions")
 
     # ---- tighten (deterministic proposer keeps the demo offline; the guardrail
-    #      still runs, exactly as it would against LLM drafts)
+    #      still runs, exactly as it would against LLM drafts). The bundled
+    #      sample grants AdministratorAccess, so alice inevitably holds
+    #      unused-looking data-plane grants (s3:*) — the demo sample is known
+    #      representative, hence the explicit opt-in below. Real runs stay
+    #      conservative: unknown data-plane usage stops the tightener.
     print("-" * 64)
     print("TIGHTEN  : propose -> guardrail -> action-level validated policies")
     tightener = Tightener(
         proposer=DeterministicProposer(registry),
         registry=registry,
-        config=TightenerConfig(),
+        config=TightenerConfig(allow_unknown_data_plane_usage=True),
     )
     result = tightener.tighten(report)
     for outcome in result.outcomes:
@@ -95,6 +99,7 @@ def run_demo() -> int:
     summary = result.to_dict()["summary"]
     print(
         f"result   : {summary['verified']} verified / {summary['needs_review']} needs_review"
+        f" / {summary['manual_review']} manual_review"
         f" / {summary['idle']} idle / {summary['failed']} failed"
     )
     return 0 if summary["failed"] == 0 else 1
