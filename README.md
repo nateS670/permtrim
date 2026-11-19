@@ -1,41 +1,44 @@
-permtrim
-LLM-Powered Multi-Cloud IAM Least-Privilege Detector & Automatic Tightener
 
-Python
-CI
-Tests
-Code style: ruff
-Checked with mypy
-License
+# permtrim
 
-Status: Tasks 1–5 complete — AWS and Azure run end to end
-(Collector → Analyzer → Graph → LLM Tightener + Guardrail). For a working
-demo: permtrim demo (see below); the roadmap lives in docs/roadmap.md.
+**LLM-Powered Multi-Cloud IAM Least-Privilege Detector & Automatic Tightener**
 
-Working demo
-permtrim demo — runs end to end on the sample snapshot bundled with the
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![CI](https://github.com/nateS670/permtrim/actions/workflows/ci.yml/badge.svg)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-128%20passed-brightgreen)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue)](http://mypy-lang.org/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+
+> **Status:** Tasks 1–5 complete — AWS **and** Azure run end to end
+> (Collector → Analyzer → Graph → LLM Tightener + Guardrail). For a working
+> demo: `permtrim demo` (see below); the roadmap lives in `docs/roadmap.md`.
+
+## Working demo
+
+`permtrim demo` — runs end to end on the sample snapshot bundled with the
 package, with no AWS account, LLM, or network required.
 
-Sample scenario: user alice has AdministratorAccess (a * that expands
-to 20,455 actions) plus an inline s3:Get*; within a 30-day CloudTrail
-window only s3:GetObject was ever used. permtrim detects the 20,454 unused
+Sample scenario: user **alice** has `AdministratorAccess` (a `*` that expands
+to 20,455 actions) plus an inline `s3:Get*`; within a 30-day CloudTrail
+window only `s3:GetObject` was ever used. permtrim detects the 20,454 unused
 permissions and produces a single-action policy that passes the guardrail
-(status verified: the original Resource scopes of the used action are
-carried into the tightened policy, not widened to "*").
+(status `verified`: the original `Resource` scopes of the used action are
+carried into the tightened policy, not widened to `"*"`).
 
-Azure RBAC support (Task 5)
+## Azure RBAC support (Task 5)
+
 permtrim now keeps the "multi-cloud" promise in its name: the same unified
 schema, the same analyzer, the same graph, and the same guardrail chain work
 for Azure subscriptions too.
 
-Azure AD object
-unified kind
-rationale
-User	user	human sign-in (UPN as the name)
-Service Principal / MI	role	workload identity (the counterpart of AWS roles)
-Group	group	permission container (for hidden paths via groups)
+| Azure AD object        | unified `kind` | rationale                                        |
+| ---------------------- | -------------- | ------------------------------------------------ |
+| User                   | `user`         | human sign-in (UPN as the name)                  |
+| Service Principal / MI | `role`         | workload identity (the counterpart of AWS roles) |
+| Group                  | `group`        | permission container (for hidden paths via groups) |
 
-bash
+```bash
 # Collect (az login or a service principal):
 permtrim collect --provider azure --subscription-id $SUB_ID --days 30
 
@@ -45,68 +48,81 @@ permtrim graph azure_snapshot_*.json --mode render
 permtrim tighten azure_snapshot_*.json --proposer auto
 #   -> role_<principal>.json (custom role definitions) + apply_roles.sh
 #      (with az role definition create commands)
+```
+
 Azure-specific details:
 
-Permission format: operations in the form
-Microsoft.Compute/virtualMachines/read and the Microsoft.Storage/*,
-*/read wildcards; notActions/notDataActions subtractions in role
-definitions are applied by the analyzer (Contributor = * −
-Microsoft.Authorization/*/Write).
-Action universe: since there is no offline dataset like AWS's, the
-registry is built from the snapshot itself (role definitions + activity
-log) — wildcard expansion happens over that universe.
-Screenshot: a sample Azure subscription graph
-(docs/permission_graph_azure.png); the orange node is mi-backup-job's
-listKeys attempt that was denied on every call, and the big red node is
-Contributor's *.
-Single-file HTML audit report
-permtrim report produces a single-file, fully self-contained HTML audit
+* **Permission format**: operations in the form
+  `Microsoft.Compute/virtualMachines/read` and the `Microsoft.Storage/*`,
+  `*/read` wildcards; `notActions`/`notDataActions` subtractions in role
+  definitions are applied by the analyzer (Contributor = `*` −
+  `Microsoft.Authorization/*/Write`).
+* **Action universe**: since there is no offline dataset like AWS's, the
+  registry is built from the snapshot itself (role definitions + activity
+  log) — wildcard expansion happens over that universe.
+* **Screenshot**: a sample Azure subscription graph
+  (`docs/permission_graph_azure.png`); the orange node is `mi-backup-job`'s
+  `listKeys` attempt that was denied on every call, and the big red node is
+  Contributor's `*`.
+
+## Single-file HTML audit report
+
+`permtrim report` produces a **single-file, fully self-contained** HTML audit
 report for security teams and managers — no server, no external assets,
 archivable (you can email it):
 
-bash
+```bash
 permtrim report data/sample_snapshot.json --output audit.html
-What's inside: summary cards (principals / idle / unused / average risk /
-verified policy count), the permission graph embedded as base64, a
-risk table that sorts when you click a column header, per-principal
-expandable detail cards (used/unused action tables, wildcard blast radius,
-risk rationale), and tightened policy blocks that can be copied with one
-click (AWS: Terraform, Azure: custom role JSON). The same command works for
-AWS and Azure snapshots. Sample outputs are bundled under docs/:
-sample_report_aws.html and sample_report_azure.html.
+```
 
-bash
+What's inside: summary cards (principals / idle / unused / average risk /
+verified policy count), the permission graph **embedded as base64**, a
+risk table that **sorts when you click a column header**, per-principal
+expandable detail cards (used/unused action tables, wildcard blast radius,
+risk rationale), and **tightened policy blocks** that can be copied with one
+click (AWS: Terraform, Azure: custom role JSON). The same command works for
+AWS and Azure snapshots. Sample outputs are bundled under `docs/`:
+`sample_report_aws.html` and `sample_report_azure.html`.
+
+```bash
 # The same command for an Azure snapshot:
 permtrim report data/sample_azure_snapshot.json --output azure_audit.html
-Continuous integration (CI)
-The GitHub Actions pipeline (.github/workflows/ci.yml) consists of three jobs:
+```
 
-lint — ruff check + ruff format --check + mypy (full static type checking).
-test — pytest on a Python 3.10/3.11/3.12 matrix + a permtrim demo CLI smoke test.
-neo4j-integration — UNWIND bulk-loading integration tests against a real
-Neo4j instance started as a service container
-(these tests skip cleanly locally when NEO4J_URI is not set).
+## Continuous integration (CI)
+
+The GitHub Actions pipeline (`.github/workflows/ci.yml`) consists of three jobs:
+
+1. **lint** — `ruff check` + `ruff format --check` + `mypy` (full static type checking).
+2. **test** — pytest on a Python 3.10/3.11/3.12 matrix + a `permtrim demo` CLI smoke test.
+3. **neo4j-integration** — UNWIND bulk-loading integration tests against a real
+   Neo4j instance started as a service container
+   (these tests skip cleanly locally when `NEO4J_URI` is not set).
+
 The tests require no accounts: the whole chain (collect → analyze → graph →
-tighten) over mocked clients built on the azure-mgmt-* SDK models is pinned
-in tests/test_azure_collector.py and tests/test_azure_pipeline.py.
+tighten) over mocked clients built on the `azure-mgmt-*` SDK models is pinned
+in `tests/test_azure_collector.py` and `tests/test_azure_pipeline.py`.
 
-Permission graph (Neo4j, Task 3)
-The unified snapshot is turned into a permission graph — who can access
+## Permission graph (Neo4j, Task 3)
+
+The unified snapshot is turned into a **permission graph** — who can access
 which actions through which policy (including via groups), and what they
 actually use:
 
-text
+```
 (:Principal)-[:MEMBER_OF]->(:Group)-[:GRANTED]->(:Policy)-[:ALLOWS]->(:Action)
 (:Principal)-[:GRANTED]->(:Policy)                # direct policy
 (:Principal)-[:CAN_USE]->(:Action)                # effective permission (deny-aware, expanded)
 (:Principal)-[:INVOKED]->(:Action)                # call that ran
 (:Principal)-[:ATTEMPTED]->(:Action)              # every call was AccessDenied
-In the rendered graph (--mode render), green nodes are used actions, red
-nodes are granted-but-never-used permissions, orange nodes are
-attempted-but-denied calls, and purple edges reveal hidden permission
-paths arriving via groups.
+```
 
-bash
+In the rendered graph (`--mode render`), green nodes are used actions, red
+nodes are granted-but-never-used permissions, orange nodes are
+attempted-but-denied calls, and purple edges reveal **hidden permission
+paths** arriving via groups.
+
+```bash
 # 1) Local Neo4j (a single command with Docker):
 docker compose up -d                    # neo4j/permtrim-demo @ localhost:7474
 
@@ -115,33 +131,38 @@ permtrim graph data/sample_snapshot.json --mode all     --neo4j-password permtri
 
 # 3) Run the ready-made queries in Neo4j Browser (http://localhost:7474):
 #    :source data/graph/queries.cypher
---mode ingest loads with the official neo4j Python driver (UNWIND bulk
-loading, idempotent MERGE, ~4,010 nodes / ~4,009 edges < 10 s); --mode export requires no driver — it produces permtrim_graph.cypher with
-literals you can paste into the Browser. --mode render produces that PNG
+```
+
+`--mode ingest` loads with the official `neo4j` Python driver (UNWIND bulk
+loading, idempotent MERGE, ~4,010 nodes / ~4,009 edges < 10 s); `--mode
+export` requires no driver — it produces `permtrim_graph.cypher` with
+literals you can paste into the Browser. `--mode render` produces that PNG
 with no database at all.
 
-Hidden permission paths in a single query
-Six ready-made Cypher queries (produced as data/graph/queries.cypher by
-permtrim graph <snapshot> --mode export; sources in
-src/permtrim/graph/queries.py)
+### Hidden permission paths in a single query
+
+Six ready-made Cypher queries (produced as `data/graph/queries.cypher` by
+`permtrim graph <snapshot> --mode export`; sources in
+`src/permtrim/graph/queries.py`)
 capture permissions arriving indirectly through groups, the intersection of
 multiple policies, an access-level-weighted excess-permission ranking,
-never-used permissions-management actions, denied attempts, and wildcard
-blast radius — all captured from a real Neo4j 5.26 instance.
+never-used *permissions-management* actions, denied attempts, and wildcard
+blast radius — all captured from **a real Neo4j 5.26 instance**.
 
-Example output: alice's hidden EC2-Read path coming from the devs group,
+Example output: alice's hidden `EC2-Read` path coming from the `devs` group,
 3,999 unused effective permissions (weighted risk 5,052), 50 dangerous
-permissions-management actions, deploy-ci's denied ec2:RunInstances
-attempt, and AdministratorAccess's 20,455-action blast radius — each in a
+permissions-management actions, `deploy-ci`'s denied `ec2:RunInstances`
+attempt, and `AdministratorAccess`'s 20,455-action blast radius — each in a
 single query.
 
-What does it do?
+## What does it do?
+
 It compares the IAM permissions in a cloud account (static) with the API
-calls the account actually makes (dynamic) to detect least-privilege
-violations, then produces action-level validated tightened Terraform
+calls the account actually makes (dynamic) to detect **least-privilege
+violations**, then produces **action-level validated** tightened Terraform
 code with a local LLM (Ollama / Llama-3):
 
-text
+```
  ┌────────────┐  static IAM       ┌──────────────┐  unified JSON  ┌─────────────┐
  │  AWS IAM   │──policy snapshot─▶│              │───────────────▶│  Analyzer   │─┐
  │ (boto3)    │                   │  collectors  │                │ (Task 2 ✅) │ │ excess
@@ -155,69 +176,81 @@ text
  │     5)     │                                                  │ GUARDRAIL ✅│──▶ Terraform
  └────────────┘                                                  │  (Task 4)  │  (action-level
                                                                  └─────────────┘   validated)
-Why is this "a real security product" and not an LLM wrapper?
-Wildcard matching is dataset-backed. Patterns in IAM policies such as
-s3:Get* / ec2:* cannot be matched against singular action names in
-CloudTrail (GetObject, RunInstances). permtrim bundles the
-iam-definition.json dataset that
-policy_sentry generates
-from the AWS Service Authorization Reference (445 services / 20,455
-actions + access levels), so it knows a pattern like ec2:* actually
-corresponds to 780 actions. CloudTrail↔IAM name exceptions are handled
-too (the s3:ListBuckets event is actually authorized by the
-s3:ListAllMyBuckets action). The dataset is pinned in
-src/permtrim/analyzer/data/iam-definition.json.gz (provenance recorded
-in action_registry.py::DATASET_SOURCE); it is a snapshot of the AWS
-service catalog, so brand-new services are unknown to it until the
-dataset is regenerated with policy_sentry.
-LLM output is never handed to the user directly. Llama-3-class models
-invent non-existent actions (s3:GetObjekt, ec2:RunInstance). The
-guardrail layer runs every draft through these checks:
-Structure: valid IAM policy syntax with recognized statement keys.
-Negation-free: NotAction/NotResource (and Azure
-notActions/notDataActions) drafts are rejected outright — a
-NotAction Allow grants a huge implicit space the new-permission check
-cannot reason about. First-version scope: explicitly listed actions.
-Hallucination check: does every action exist in the 20,455-action dataset?
-Coverage: is every action the principal used still allowed?
-(otherwise the tightening breaks production)
-No new permissions: does the draft introduce a permission the
-principal never had? (blocks the LLM from "fixing" coverage with
-Action: "*")
-Resource scope: when the original grants recorded resource scopes,
-a draft that widens them (e.g. "*" where the principal only ever had
-arn:aws:s3:::corp-data/*) is rejected — shrinking the action count
-must not grow the blast radius per action.
-A rejected draft is fed back to the LLM with its error; after 3 attempts
-a deterministic fallback (the observed actions themselves) kicks in —
-no code path ever produces an unvalidated policy. The output status is
-honest about the level of validation: verified (action + resource
-scopes) vs needs_review (action-level only, e.g. Azure where role
-definitions carry no resource scopes). A truncated activity window
-(AWS API cap hit) stops automatic tightening entirely
-(insufficient_data) — removing permissions based on incomplete usage
-data is how tightening breaks production.
-The simulator hook is ready. Once a boto3 iam:SimulatePrincipalPolicy
-wrapper is attached via Guardrail(simulator=...), AWS's own evaluation
-gets the final say too (skipped in offline mode).
-Installation
-bash
+```
+
+### Why is this "a real security product" and not an LLM wrapper?
+
+1. **Wildcard matching is dataset-backed.** Patterns in IAM policies such as
+   `s3:Get*` / `ec2:*` cannot be matched against singular action names in
+   CloudTrail (GetObject, RunInstances). permtrim bundles the
+   **iam-definition.json** dataset that
+   [policy_sentry](https://github.com/salesforce/policy_sentry) generates
+   from the AWS Service Authorization Reference (445 services / 20,455
+   actions + access levels), so it knows a pattern like `ec2:*` actually
+   corresponds to 780 actions. CloudTrail↔IAM name exceptions are handled
+   too (the `s3:ListBuckets` event is actually authorized by the
+   `s3:ListAllMyBuckets` action). The dataset is pinned in
+   `src/permtrim/analyzer/data/iam-definition.json.gz` (provenance recorded
+   in `action_registry.py::DATASET_SOURCE`); it is a snapshot of the AWS
+   service catalog, so brand-new services are unknown to it until the
+   dataset is regenerated with policy_sentry.
+
+2. **LLM output is never handed to the user directly.** Llama-3-class models
+   invent non-existent actions (`s3:GetObjekt`, `ec2:RunInstance`). The
+   guardrail layer runs every draft through these checks:
+   - **Structure**: valid IAM policy syntax with recognized statement keys.
+   - **Negation-free**: `NotAction`/`NotResource` (and Azure
+     `notActions`/`notDataActions`) drafts are rejected outright — a
+     `NotAction` Allow grants a huge implicit space the new-permission check
+     cannot reason about. First-version scope: explicitly listed actions.
+   - **Hallucination check**: does every action exist in the 20,455-action dataset?
+   - **Coverage**: is every action the principal used still allowed?
+     (otherwise the tightening breaks production)
+   - **No new permissions**: does the draft introduce a permission the
+     principal never had? (blocks the LLM from "fixing" coverage with
+     `Action: "*"`)
+   - **Resource scope**: when the original grants recorded resource scopes,
+     a draft that widens them (e.g. `"*"` where the principal only ever had
+     `arn:aws:s3:::corp-data/*`) is rejected — shrinking the action count
+     must not grow the blast radius per action.
+   A rejected draft is fed back to the LLM with its error; after 3 attempts
+   a deterministic fallback (the observed actions themselves) kicks in —
+   **no code path ever produces an unvalidated policy**. The output status is
+   honest about the level of validation: `verified` (action + resource
+   scopes) vs `needs_review` (action-level only, e.g. Azure where role
+   definitions carry no resource scopes). A **truncated activity window**
+   (AWS API cap hit) stops automatic tightening entirely
+   (`insufficient_data`) — removing permissions based on incomplete usage
+   data is how tightening breaks production.
+
+3. **The simulator hook is ready.** Once a boto3 `iam:SimulatePrincipalPolicy`
+   wrapper is attached via `Guardrail(simulator=...)`, AWS's own evaluation
+   gets the final say too (skipped in offline mode).
+
+## Installation
+
+```bash
 git clone https://github.com/nateS670/permtrim.git
 cd permtrim
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[graph,azure,dev]"
 pytest          # 128 tests — NO AWS ACCOUNT / LLM REQUIRED
-AWS authentication uses the standard boto3 chain. The read-only IAM
+```
+
+AWS authentication uses the standard boto3 chain. The **read-only** IAM
 permissions needed for the collection account:
 
-text
+```
 sts:GetCallerIdentity
 iam:GetAccountAuthorizationDetails
 iam:GetPolicy
 iam:GetPolicyVersion
 cloudtrail:LookupEvents
-Usage
-bash
+```
+
+## Usage
+
+```bash
 # 0) See it immediately: offline end-to-end demo (no AWS/LLM needed)
 permtrim demo
 
@@ -240,9 +273,11 @@ permtrim graph data/aws_snapshot_*.json --mode all --neo4j-password permtrim-dem
 # With an LLM (local):
 ollama pull llama3.2 && ollama serve
 permtrim tighten data/snapshot.json --proposer ollama --ollama-model llama3.2
+```
+
 Python API:
 
-python
+```python
 from permtrim.collectors import AWSCollector, AWSCollectorConfig, write_json_document
 from permtrim.analyzer import Analyzer
 from permtrim.llm import Tightener, TightenerConfig, OllamaProposer, policy_to_hcl
@@ -259,11 +294,14 @@ tightener = Tightener(OllamaProposer(), registry, TightenerConfig(max_attempts=3
 result = tightener.tighten(report)  # propose → guardrail → retry
 for outcome in result.validated:  # verified + needs_review
     print(policy_to_hcl(outcome.principal, outcome.policy))
-Unified snapshot schema (v1.0)
-The JSON document produced by collect() is the single input to all later
-stages (see the bundled example data/sample_snapshot.json):
+```
 
-jsonc
+## Unified snapshot schema (v1.0)
+
+The JSON document produced by `collect()` is the single input to all later
+stages (see the bundled example `data/sample_snapshot.json`):
+
+```jsonc
 {
   "meta":       { "schema_version": "1.0", "provider": "aws", "account_id": "…",
                   "lookback_days": 30, "window": {"truncated": false} },
@@ -277,79 +315,89 @@ jsonc
                     "observed_activity": { "action_counts": {"s3:GetObject": 2} } } ],
   "unmatched_activity": [ … ]   // root, deleted identities, cross-account calls
 }
-Analyzer output
-For every principal: the expanded granted action set (wildcards are
+```
+
+## Analyzer output
+
+For every principal: the expanded **granted** action set (wildcards are
 opened against the dataset, group permissions are folded into members,
-explicit Deny is dropped), the used actions (only calls that ran — an
-action where every call errored is flagged error_only), the unused ones,
-wildcard sources, and a risk score between 0–100 (idle principal +40,
+explicit Deny is dropped), the **used** actions (only calls that ran — an
+action where every call errored is flagged `error_only`), the unused ones,
+wildcard sources, and a **risk score** between 0–100 (idle principal +40,
 access-level-weighted unused permissions ≤30, wildcards ≤20,
 permissions-management ≤10).
 
-The risk score is a prioritization score, not a probability of
-compromise: it ranks which principal to tighten first (idle accounts with
+The risk score is a **prioritization score, not a probability of
+compromise**: it ranks which principal to tighten first (idle accounts with
 broad unused grants score highest), and says nothing about whether an attack
 is likely. Permission boundary ARNs are collected and surfaced in the
-report; effective permissions (identity policies ∩ boundary) are not
+report; effective permissions (identity policies ∩ boundary) are **not**
 evaluated — the analysis scope is identity-based policies only (no SCPs,
 session policies, or resource-based policies either).
 
-Limitations (deliberate design decisions)
-Limitation
-Why
-Plan
-CloudTrail lookup_events covers the last 90 days only	AWS API limit	S3 → Athena pipeline (backlog)
-At most 10,000 events; window.truncated=true when cut off — and the tightener then refuses to run (insufficient_data)	AWS API limit	Same; --allow-truncated-window is the explicit override
-Event history is regional	AWS API limit	Sample per region; merge
-lookup_events returns management events only — data-plane calls (e.g. s3:GetObject on objects) are never visible to permtrim, even when a trail records data events (those go to S3 / CloudTrail Lake, a different pipeline)	AWS API design (LookupEvents does not search data events)	CloudTrail Lake / S3→Athena ingestion (backlog); until then unused-looking data-plane grants (s3/lambda/dynamodb/qldb) are reported as unknown usage, excluded from unused_actions, and the tightener stops for principals holding them (--allow-unknown-data-plane-usage overrides)
-The analyzer does not evaluate Resource/Condition (action-level audit view); resource scopes of the original grants are preserved where recorded and widening drafts are rejected, but unknown scope ⇒ needs_review, never silently "*"	Scoping decisions need resource-level usage data	Resource carried from original policies; simulator hook for full fidelity
-Permission boundaries / SCPs / session policies / resource-based policies are not evaluated	Effective-permission evaluation is out of scope for v1	Identity-based policies only (documented here); boundary ARNs surfaced in the report
-Azure: the action universe is built from the snapshot itself (role definitions + activity log), so * expansion is a lower bound, not the full Azure operation set; tightened Azure roles are therefore always needs_review	No offline Azure action dataset exists	Future: vendored Azure operations catalog
-Works without an LLM too	By design	The deterministic proposer is the reference implementation
+## Limitations (deliberate design decisions)
 
-Architecture: a new cloud provider = one new class
-Everything provider-specific is encapsulated under collectors/; the
+| Limitation | Why | Plan |
+| --- | --- | --- |
+| CloudTrail `lookup_events` covers the **last 90 days** only | AWS API limit | S3 → Athena pipeline (backlog) |
+| At most **10,000 events**; `window.truncated=true` when cut off — and the tightener then **refuses to run** (`insufficient_data`) | AWS API limit | Same; `--allow-truncated-window` is the explicit override |
+| Event history is **regional** | AWS API limit | Sample per region; merge |
+| `lookup_events` returns **management events only** — data-plane calls (e.g. `s3:GetObject` on objects) are **never visible to permtrim**, even when a trail records data events (those go to S3 / CloudTrail Lake, a different pipeline) | AWS API design (LookupEvents does not search data events) | CloudTrail Lake / S3→Athena ingestion (backlog); until then unused-looking data-plane grants (s3/lambda/dynamodb/qldb) are reported as **unknown usage**, excluded from `unused_actions`, and the tightener **stops** for principals holding them (`--allow-unknown-data-plane-usage` overrides) |
+| The analyzer does **not** evaluate Resource/Condition (action-level audit view); resource scopes of the original grants are preserved where recorded and widening drafts are rejected, but unknown scope ⇒ `needs_review`, never silently `"*"` | Scoping decisions need resource-level usage data | `Resource` carried from original policies; simulator hook for full fidelity |
+| Permission boundaries / SCPs / session policies / resource-based policies are **not** evaluated | Effective-permission evaluation is out of scope for v1 | Identity-based policies only (documented here); boundary ARNs surfaced in the report |
+| Azure: the action universe is built from the snapshot itself (role definitions + activity log), so `*` expansion is a lower bound, not the full Azure operation set; tightened Azure roles are therefore always `needs_review` | No offline Azure action dataset exists | Future: vendored Azure operations catalog |
+| Works without an LLM too | By design | The deterministic proposer is the reference implementation |
+
+## Architecture: a new cloud provider = one new class
+
+Everything provider-specific is encapsulated under `collectors/`; the
 Analyzer / Guardrail / LLM modules see only the unified schema. To add
-Azure (Task 5): implement the three abstract methods of BaseCollector +
-add an "azure" entry in factory.py. The merge, the per-principal view,
+Azure (Task 5): implement the three abstract methods of `BaseCollector` +
+add an `"azure"` entry in `factory.py`. The merge, the per-principal view,
 and JSON writing are handled by the base class.
 
-Development
-bash
+## Development
+
+```bash
 pip install -e ".[graph,azure,dev]"
 pytest                          # 128 tests: Stubber-based collector, analyzer,
                                 # guardrail (incl. a fake LLM that hallucinates), CLI
 pytest --cov=permtrim           # coverage report
 ruff check . && mypy            # lint + type checking
-A highlight of the test suite: TestHallucinationLoop — verifies end to end
+```
+
+A highlight of the test suite: `TestHallucinationLoop` — verifies end to end
 that a scripted fake LLM that hallucinates gets rejected by the guardrail,
 that the error message is fed back to the model, and that it either fixes
 itself on the second attempt or falls back to the deterministic proposer.
 
-What the tests actually guarantee
+### What the tests actually guarantee
+
 Rather than a raw count, these are the security properties pinned by
 regression tests (each names its test):
 
-A draft using NotAction/NotResource (or Azure notActions) is
-rejected — negation cannot smuggle in permissions the no-new-permissions
-check cannot see. (test_notaction_draft_rejected,
-test_notresource_draft_rejected, test_azure_notactions_draft_rejected)
-A draft widening resource scopes ("*" where the original grant was
-arn:aws:s3:::corp-data/*) is rejected; the deterministic proposer
-preserves original scopes and splits distinct scopes into separate
-statements. (test_resource_scope_widening_rejected,
-test_deterministic_proposer_preserves_original_resources)
-A truncated activity window stops automatic tightening before the proposer
-is even consulted. (test_truncated_window_blocks_tightening,
-test_tighten_truncated_window_refuses)
-Without resource provenance the output says needs_review, never
-"verified". (test_no_provenance_falls_back_to_star_and_needs_review)
-Action: "*" fixes for coverage are rejected as new permissions;
-hallucinated actions are quoted back to the model for the retry.
-(test_wildcard_fix_coverage_rejected_as_new_permissions,
-test_hallucinated_action_rejected)
-License
-Apache-2.0 — see the LICENSE file. The bundled IAM action dataset
+* A draft using `NotAction`/`NotResource` (or Azure `notActions`) is
+  rejected — negation cannot smuggle in permissions the no-new-permissions
+  check cannot see. (`test_notaction_draft_rejected`,
+  `test_notresource_draft_rejected`, `test_azure_notactions_draft_rejected`)
+* A draft widening resource scopes (`"*"` where the original grant was
+  `arn:aws:s3:::corp-data/*`) is rejected; the deterministic proposer
+  preserves original scopes and splits distinct scopes into separate
+  statements. (`test_resource_scope_widening_rejected`,
+  `test_deterministic_proposer_preserves_original_resources`)
+* A truncated activity window stops automatic tightening before the proposer
+  is even consulted. (`test_truncated_window_blocks_tightening`,
+  `test_tighten_truncated_window_refuses`)
+* Without resource provenance the output says `needs_review`, never
+  "verified". (`test_no_provenance_falls_back_to_star_and_needs_review`)
+* `Action: "*"` fixes for coverage are rejected as new permissions;
+  hallucinated actions are quoted back to the model for the retry.
+  (`test_wildcard_fix_coverage_rejected_as_new_permissions`,
+  `test_hallucinated_action_rejected`)
+
+## License
+
+Apache-2.0 — see the `LICENSE` file. The bundled IAM action dataset
 (generated from the AWS Service Authorization Reference by the
-policy_sentry project) is
+[policy_sentry](https://github.com/salesforce/policy_sentry) project) is
 distributed under the same license.
