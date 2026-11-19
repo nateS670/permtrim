@@ -39,7 +39,14 @@ def _prepare(document: dict) -> tuple[dict, AnalysisReport, TightenResult]:
         proposer = DeterministicProposer(
             cast("ActionRegistry | None", registry), azure_subscription=subscription
         )
-        tightener = Tightener(proposer, cast("ActionRegistry", registry), TightenerConfig())
+        # Azure sample carries unused-looking data-plane grants (BlobReader's
+        # dataActions); the sample window is known representative -> opt in,
+        # mirroring the AWS branch, so the report shows the remediation shape.
+        tightener = Tightener(
+            proposer,
+            cast("ActionRegistry", registry),
+            TightenerConfig(allow_unknown_data_plane_usage=True),
+        )
     else:
         from permtrim.analyzer import load_default_registry
 
