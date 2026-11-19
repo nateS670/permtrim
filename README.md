@@ -5,7 +5,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![CI](https://github.com/nateS670/permtrim/actions/workflows/ci.yml/badge.svg)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-160%20passed-brightgreen)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-171%20passed-brightgreen)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue)](http://mypy-lang.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
@@ -47,7 +47,11 @@ permtrim analyze azure_snapshot_*.json
 permtrim graph azure_snapshot_*.json --mode render
 permtrim tighten azure_snapshot_*.json --proposer auto
 #   -> role_<principal>.json (custom role definitions) + apply_roles.sh
-#      (with az role definition create commands)
+#      (az role definition create commands — it CREATES the role definitions
+#      only; switching assignments to the new roles and deleting old ones
+#      stay manual review steps)
+#   note: Azure ignores --proposer (LLM drafting is not supported for Azure
+#   yet); the CLI logs a warning and uses the deterministic proposer
 ```
 
 Azure-specific details:
@@ -234,7 +238,7 @@ git clone https://github.com/nateS670/permtrim.git
 cd permtrim
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[graph,azure,dev]"
-pytest          # 160 tests — NO AWS ACCOUNT / LLM REQUIRED
+pytest          # 171 tests — NO AWS ACCOUNT / LLM REQUIRED
 ```
 
 AWS authentication uses the standard boto3 chain. The **read-only** IAM
@@ -342,7 +346,7 @@ session policies, or resource-based policies either).
 | CloudTrail `lookup_events` covers the **last 90 days** only | AWS API limit | S3 → Athena pipeline (backlog) |
 | At most **10,000 events**; `window.truncated=true` when cut off — and the tightener then **refuses to run** (`insufficient_data`) | AWS API limit | Same; `--allow-truncated-window` is the explicit override |
 | Event history is **regional** | AWS API limit | Sample per region; merge |
-| `lookup_events` returns **management events only** — data-plane calls (e.g. `s3:GetObject` on objects) are **never visible to permtrim**, even when a trail records data events (those go to S3 / CloudTrail Lake, a different pipeline) | AWS API design (LookupEvents does not search data events) | CloudTrail Lake / S3→Athena ingestion (backlog); until then unused-looking data-plane grants are reported as **unknown usage**, excluded from `unused_actions`, and the tightener **stops** for principals holding them (`--allow-unknown-data-plane-usage` overrides). The data-plane classification is a single table (`_DATA_PLANE_SERVICE_PREFIXES` in `engine.py`); adding a service there is the one-place change that lifts it out of "unused" — a missing service can no longer let a real data-plane grant be dropped |
+| `lookup_events` returns **management events only** — data-plane calls (e.g. `s3:GetObject` on objects, `sns:Publish`) are **never visible to permtrim**, even when a trail records data events (those go to S3 / CloudTrail Lake, a different pipeline) | AWS API design (LookupEvents does not search data events) | CloudTrail Lake / S3→Athena ingestion (backlog); until then unused-looking data-plane grants are reported as **unknown usage**, excluded from `unused_actions`, and the tightener **stops** for principals holding them (`--allow-unknown-data-plane-usage` overrides). Classification is per **ACTION**, not per service (transcribed from the CloudTrail data-event docs into `engine.py`): documented data events (S3 object ops incl. `sns:Publish`, Lambda `Invoke`, DynamoDB item ops, SQS messaging, EBS direct APIs, ...) get the unknown-usage protection, documented management events (`s3:CreateBucket`, `sns:Subscribe`, ... ) are analyzed normally, and an action of a mixed service that is in **neither** table defaults to the safe side — unknown usage, **explicitly listed** in `unclassified_actions` so a reviewer can tell "invisible by documentation" from "the table did not know this action". Residual limitation: a *brand-new* data-event service must be added to `_AWS_DATA_EVENT_SERVICES` (one place, dated table) — until then its actions classify as management |
 | Azure Activity Log records **control-plane** operations only; data-plane calls (Blob reads/writes, Key Vault `get`, Cosmos DB item ops, ...) live in each resource's diagnostic settings, a pipeline permtrim does not ingest | Azure API design (Activity Log is control-plane) | Resource diagnostic-settings ingestion (backlog); until then Azure data-plane grants are kept in a **separate statement** (the matcher splits `actions` vs `dataActions` and the engine carries `Statement.data_plane` end to end), reported as **unknown usage**, and the tightener **stops** — the deterministic proposer routes the *used* data-plane actions back into `dataActions` from the finding's own classification (not a hardcoded prefix), so a data-plane grant stays on the data plane for every resource provider |
 | The analyzer does **not** evaluate Resource/Condition (action-level audit view); resource scopes of the original grants are preserved where recorded and widening drafts are rejected, but unknown scope ⇒ `needs_review`, never silently `"*"` | Scoping decisions need resource-level usage data | `Resource` carried from original policies; simulator hook for full fidelity. AWS drafts must also carry a non-empty `Resource` element (the guardrail rejects a missing / empty / wrong-typed `Resource` so IAM's `"*"` default cannot widen the blast radius) |
 | Permission boundaries / SCPs / session policies / resource-based policies are **not** evaluated | Effective-permission evaluation is out of scope for v1 | Identity-based policies only (documented here); boundary ARNs surfaced in the report |
@@ -361,7 +365,7 @@ and JSON writing are handled by the base class.
 
 ```bash
 pip install -e ".[graph,azure,dev]"
-pytest                          # 160 tests: Stubber-based collector, analyzer,
+pytest                          # 171 tests: Stubber-based collector, analyzer,
                                 # guardrail (incl. a fake LLM that hallucinates), CLI
 pytest --cov=permtrim           # coverage report
 ruff check . && mypy            # lint + type checking
@@ -395,6 +399,38 @@ regression tests (each names its test):
   hallucinated actions are quoted back to the model for the retry.
   (`test_wildcard_fix_coverage_rejected_as_new_permissions`,
   `test_hallucinated_action_rejected`)
+* Unused actions cannot be re-granted: an LLM that proposes the old broad
+  grant (literal or wildcard) back is rejected. (`TestUnusedRemoval` —
+  `test_star_draft_for_admin_principal_rejected`,
+  `test_literal_regrant_of_unused_actions_rejected`)
+* A `Deny` statement cannot ride along in a tightened policy (it would
+  override the validated Allows outside the coverage check).
+  (`TestDenyStatementRejected` — `test_allow_plus_deny_same_action_rejected`,
+  `test_deny_only_draft_rejected`)
+* Used actions originally granted under a `Condition` element are never
+  auto-replaced; the tightener reports `manual_review` with the real reason
+  instead of "idle". (`TestIdleVsUnknownOrdering` —
+  `test_conditional_only_no_usage_is_manual_review_not_idle`)
+* AWS data-plane classification is per action: documented data events
+  (`sns:Publish`, `s3:GetObject`, ...) with no observed usage stop the
+  tightener (`unknown_data_plane_usage`), documented management events
+  (`s3:CreateBucket`, `sns:Subscribe`, ...) are removable without review
+  noise, and unclassifiable actions default to the conservative side and are
+  listed in `unclassified_actions`. (`TestDataPlaneClassification`,
+  `test_unused_sns_publish_stops_tightener`,
+  `test_unused_management_action_does_not_stop_tightener`)
+* Every AWS Allow statement must carry a non-empty `Resource` of the right
+  shape, so IAM's implicit `"*"` default cannot widen the blast radius.
+  (`TestResourceElementRequired`)
+* Azure `dataActions` cannot be smuggled into `actions` (or the reverse) —
+  the guardrail validates the category split against the original role for
+  every resource provider, not just Blob. (`TestAzureCategoryMismatch` —
+  Key Vault and Cosmos DB cases, plus the feedback-loop test)
+* Azure data-plane grants land in `unknown_usage_actions` and the
+  deterministic proposer routes used data-plane actions back into
+  `dataActions` by the finding's own classification, not a storage prefix.
+  (`TestAzureDataPlaneUnknownUsage`,
+  `test_opt_in_routes_used_data_plane_to_data_actions`)
 
 ## License
 
