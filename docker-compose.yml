@@ -1,0 +1,23 @@
+# Local Neo4j for the permtrim permission graph (Task 3).
+#
+#   docker compose up -d
+#   permtrim graph data/sample_snapshot.json --mode ingest \
+#       --neo4j-password permtrim
+#
+# Browser: http://localhost:7474 (user neo4j / password permtrim)
+
+services:
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: permtrim-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/permtrim
+    ports:
+      - "7474:7474"   # HTTP Browser
+      - "7687:7687"   # Bolt
+    volumes:
+      - neo4j-data:/data
+      - ./data/graph:/import   # mount exported .cypher scripts if you want :source them
+
+volumes:
+  neo4j-data:

@@ -1,0 +1,408 @@
+{
+  "meta": {
+    "schema_version": "1.0",
+    "provider": "aws",
+    "generated_at": "2026-11-10T12:00:00+00:00",
+    "lookback_days": 30,
+    "window": {
+      "start": "2026-10-11T11:45:00+00:00",
+      "end": "2026-11-10T11:45:00+00:00",
+      "lookback_days": 30,
+      "source": "cloudtrail:lookup_events",
+      "truncated": false
+    },
+    "account_id": "111122223333",
+    "region": "eu-west-1",
+    "collector_identity_arn": "arn:aws:iam::111122223333:user/permtrim-runner"
+  },
+  "identities": {
+    "account_id": "111122223333",
+    "collector_identity_arn": "arn:aws:iam::111122223333:user/permtrim-runner",
+    "collected_at": "2026-11-10T12:00:00+00:00",
+    "users": [
+      {
+        "name": "alice",
+        "arn": "arn:aws:iam::111122223333:user/alice",
+        "path": "/",
+        "created_at": "2024-03-01T00:00:00+00:00",
+        "groups": [
+          "devs"
+        ],
+        "inline_policies": {
+          "s3-extra": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject"
+                ],
+                "Resource": "arn:aws:s3:::corp-data/*"
+              }
+            ]
+          }
+        },
+        "attached_managed_policies": [
+          {
+            "name": "AdministratorAccess",
+            "arn": "arn:aws:iam::aws:policy/AdministratorAccess",
+            "kind": "aws_managed"
+          }
+        ],
+        "permission_boundary_arn": "arn:aws:iam::111122223333:policy/boundary-poc",
+        "tags": {
+          "team": "platform"
+        }
+      }
+    ],
+    "roles": [
+      {
+        "name": "deploy-ci",
+        "arn": "arn:aws:iam::111122223333:role/deploy-ci",
+        "path": "/",
+        "created_at": "2024-05-10T00:00:00+00:00",
+        "trust_policy": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "codebuild.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "inline_policies": {},
+        "attached_managed_policies": [],
+        "permission_boundary_arn": null,
+        "max_session_duration": null,
+        "tags": {}
+      }
+    ],
+    "groups": [
+      {
+        "name": "devs",
+        "arn": "arn:aws:iam::111122223333:group/devs",
+        "created_at": "2024-03-02T00:00:00+00:00",
+        "inline_policies": {},
+        "attached_managed_policies": [
+          {
+            "name": "EC2-Read",
+            "arn": "arn:aws:iam::111122223333:policy/EC2-Read",
+            "kind": "customer_managed"
+          }
+        ]
+      }
+    ],
+    "managed_policies": {
+      "arn:aws:iam::111122223333:policy/EC2-Read": {
+        "name": "EC2-Read",
+        "arn": "arn:aws:iam::111122223333:policy/EC2-Read",
+        "kind": "customer_managed",
+        "default_version_id": "v1",
+        "document": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "ec2:Describe*",
+                "ec2:Get*"
+              ],
+              "Resource": "*"
+            }
+          ]
+        },
+        "document_status": "available",
+        "attached_to": [
+          "devs"
+        ]
+      },
+      "arn:aws:iam::aws:policy/AdministratorAccess": {
+        "name": "AdministratorAccess",
+        "arn": "arn:aws:iam::aws:policy/AdministratorAccess",
+        "kind": "aws_managed",
+        "default_version_id": "v1",
+        "document": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": "*",
+              "Resource": "*"
+            }
+          ]
+        },
+        "document_status": "available",
+        "attached_to": [
+          "alice"
+        ]
+      }
+    }
+  },
+  "activity": {
+    "window": {
+      "start": "2026-10-11T11:45:00+00:00",
+      "end": "2026-11-10T11:45:00+00:00",
+      "lookback_days": 30,
+      "source": "cloudtrail:lookup_events",
+      "truncated": false
+    },
+    "usage": {
+      "role:deploy-ci": {
+        "event_count": 1,
+        "error_event_count": 1,
+        "action_counts": {
+          "ec2:RunInstances": 1
+        },
+        "error_action_counts": {
+          "ec2:RunInstances": 1
+        },
+        "first_seen": "2026-11-06T09:30:00+00:00",
+        "last_seen": "2026-11-06T09:30:00+00:00"
+      },
+      "root:root": {
+        "event_count": 1,
+        "error_event_count": 0,
+        "action_counts": {
+          "iam:CreateUser": 1
+        },
+        "error_action_counts": {},
+        "first_seen": "2026-11-07T08:00:00+00:00",
+        "last_seen": "2026-11-07T08:00:00+00:00"
+      },
+      "user:alice": {
+        "event_count": 2,
+        "error_event_count": 0,
+        "action_counts": {
+          "s3:GetObject": 2
+        },
+        "error_action_counts": {},
+        "first_seen": "2026-11-05T10:00:00+00:00",
+        "last_seen": "2026-11-06T11:30:00+00:00"
+      }
+    },
+    "events": [
+      {
+        "event_id": "evt-alice-1",
+        "time": "2026-11-05T10:00:00+00:00",
+        "principal": {
+          "kind": "user",
+          "name": "alice",
+          "arn": "arn:aws:iam::111122223333:user/alice",
+          "session": null,
+          "account_id": "111122223333"
+        },
+        "service": "s3",
+        "action": "s3:GetObject",
+        "event_source": "s3.amazonaws.com",
+        "event_name": "GetObject",
+        "is_error": false,
+        "error_code": null,
+        "read_only": true
+      },
+      {
+        "event_id": "evt-alice-2",
+        "time": "2026-11-06T11:30:00+00:00",
+        "principal": {
+          "kind": "user",
+          "name": "alice",
+          "arn": "arn:aws:iam::111122223333:user/alice",
+          "session": null,
+          "account_id": "111122223333"
+        },
+        "service": "s3",
+        "action": "s3:GetObject",
+        "event_source": "s3.amazonaws.com",
+        "event_name": "GetObject",
+        "is_error": false,
+        "error_code": null,
+        "read_only": true
+      },
+      {
+        "event_id": "evt-ci-1",
+        "time": "2026-11-06T09:30:00+00:00",
+        "principal": {
+          "kind": "role",
+          "name": "deploy-ci",
+          "arn": "arn:aws:iam::111122223333:role/deploy-ci",
+          "session": "gh-actions",
+          "account_id": "111122223333"
+        },
+        "service": "ec2",
+        "action": "ec2:RunInstances",
+        "event_source": "ec2.amazonaws.com",
+        "event_name": "RunInstances",
+        "is_error": true,
+        "error_code": "Client.UnauthorizedOperation",
+        "read_only": false
+      },
+      {
+        "event_id": "evt-root-1",
+        "time": "2026-11-07T08:00:00+00:00",
+        "principal": {
+          "kind": "root",
+          "name": "root",
+          "arn": "arn:aws:iam::111122223333:root",
+          "session": null,
+          "account_id": "111122223333"
+        },
+        "service": "iam",
+        "action": "iam:CreateUser",
+        "event_source": "iam.amazonaws.com",
+        "event_name": "CreateUser",
+        "is_error": false,
+        "error_code": null,
+        "read_only": false
+      }
+    ]
+  },
+  "principals": [
+    {
+      "kind": "group",
+      "name": "devs",
+      "arn": "arn:aws:iam::111122223333:group/devs",
+      "account_id": "111122223333",
+      "permission_sources": {
+        "inline_policies": {},
+        "attached_managed_policies": [
+          {
+            "name": "EC2-Read",
+            "arn": "arn:aws:iam::111122223333:policy/EC2-Read",
+            "kind": "customer_managed",
+            "document": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:Describe*",
+                    "ec2:Get*"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            },
+            "document_status": "available"
+          }
+        ],
+        "members": [
+          "alice"
+        ]
+      },
+      "observed_activity": null
+    },
+    {
+      "kind": "role",
+      "name": "deploy-ci",
+      "arn": "arn:aws:iam::111122223333:role/deploy-ci",
+      "account_id": "111122223333",
+      "created_at": "2024-05-10T00:00:00+00:00",
+      "tags": {},
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "codebuild.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "permission_sources": {
+        "inline_policies": {},
+        "attached_managed_policies": [],
+        "permission_boundary_arn": null
+      },
+      "observed_activity": {
+        "event_count": 1,
+        "error_event_count": 1,
+        "action_counts": {
+          "ec2:RunInstances": 1
+        },
+        "error_action_counts": {
+          "ec2:RunInstances": 1
+        },
+        "first_seen": "2026-11-06T09:30:00+00:00",
+        "last_seen": "2026-11-06T09:30:00+00:00"
+      }
+    },
+    {
+      "kind": "user",
+      "name": "alice",
+      "arn": "arn:aws:iam::111122223333:user/alice",
+      "account_id": "111122223333",
+      "created_at": "2024-03-01T00:00:00+00:00",
+      "tags": {
+        "team": "platform"
+      },
+      "permission_sources": {
+        "inline_policies": {
+          "s3-extra": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject"
+                ],
+                "Resource": "arn:aws:s3:::corp-data/*"
+              }
+            ]
+          }
+        },
+        "attached_managed_policies": [
+          {
+            "name": "AdministratorAccess",
+            "arn": "arn:aws:iam::aws:policy/AdministratorAccess",
+            "kind": "aws_managed",
+            "document": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "*",
+                  "Resource": "*"
+                }
+              ]
+            },
+            "document_status": "available"
+          }
+        ],
+        "via_groups": [
+          "devs"
+        ],
+        "permission_boundary_arn": "arn:aws:iam::111122223333:policy/boundary-poc"
+      },
+      "observed_activity": {
+        "event_count": 2,
+        "error_event_count": 0,
+        "action_counts": {
+          "s3:GetObject": 2
+        },
+        "error_action_counts": {},
+        "first_seen": "2026-11-05T10:00:00+00:00",
+        "last_seen": "2026-11-06T11:30:00+00:00"
+      }
+    }
+  ],
+  "unmatched_activity": [
+    {
+      "kind": "root",
+      "name": "root",
+      "summary": {
+        "event_count": 1,
+        "error_event_count": 0,
+        "action_counts": {
+          "iam:CreateUser": 1
+        },
+        "error_action_counts": {},
+        "first_seen": "2026-11-07T08:00:00+00:00",
+        "last_seen": "2026-11-07T08:00:00+00:00"
+      }
+    }
+  ]
+}

@@ -1,0 +1,600 @@
+{
+  "meta": {
+    "schema_version": "1.0",
+    "provider": "azure",
+    "generated_at": "2026-11-10T12:00:00+00:00",
+    "lookback_days": 30,
+    "window": {
+      "start": "2026-10-11T12:00:00+00:00",
+      "end": "2026-11-10T12:00:00+00:00",
+      "lookback_days": 30,
+      "source": "azure:activity_logs",
+      "truncated": false
+    },
+    "account_id": "00000000-1111-2222-3333-444444444444",
+    "region": null,
+    "collector_identity_arn": null,
+    "subscription_id": "00000000-1111-2222-3333-444444444444"
+  },
+  "identities": {
+    "account_id": "00000000-1111-2222-3333-444444444444",
+    "collector_identity_arn": "azure:subscription/00000000-1111-2222-3333-444444444444",
+    "collected_at": "2026-11-10T12:00:00+00:00",
+    "users": [
+      {
+        "name": "zeynep@contoso.com",
+        "arn": "azure:object/aaaaaaaa-0000-0000-0000-000000000001",
+        "path": "",
+        "created_at": null,
+        "groups": [
+          "platform-team"
+        ],
+        "inline_policies": {},
+        "attached_managed_policies": [
+          {
+            "name": "Contributor",
+            "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c",
+            "kind": "builtin"
+          },
+          {
+            "name": "BlobReader",
+            "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/2a2b9908-6ea1-4ae2-b6a1-4a886027ee6c",
+            "kind": "custom"
+          }
+        ],
+        "permission_boundary_arn": null,
+        "tags": {
+          "principalId": "aaaaaaaa-0000-0000-0000-000000000001"
+        }
+      }
+    ],
+    "roles": [
+      {
+        "name": "deploy-agent",
+        "arn": "azure:object/bbbbbbbb-0000-0000-0000-000000000002",
+        "path": "",
+        "created_at": null,
+        "trust_policy": {},
+        "inline_policies": {},
+        "attached_managed_policies": [
+          {
+            "name": "VMManager",
+            "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/11111111-2222-3333-4444-555555555555",
+            "kind": "custom"
+          }
+        ],
+        "permission_boundary_arn": null,
+        "max_session_duration": null,
+        "tags": {
+          "principalId": "bbbbbbbb-0000-0000-0000-000000000002",
+          "azurePrincipalType": "servicePrincipal"
+        }
+      },
+      {
+        "name": "mi-backup-job",
+        "arn": "azure:object/dddddddd-0000-0000-0000-000000000004",
+        "path": "",
+        "created_at": null,
+        "trust_policy": {},
+        "inline_policies": {},
+        "attached_managed_policies": [
+          {
+            "name": "StorageAccountKeyOperator",
+            "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/66666666-7777-8888-9999-000000000000",
+            "kind": "custom"
+          }
+        ],
+        "permission_boundary_arn": null,
+        "max_session_duration": null,
+        "tags": {
+          "principalId": "dddddddd-0000-0000-0000-000000000004",
+          "azurePrincipalType": "managedIdentity"
+        }
+      }
+    ],
+    "groups": [
+      {
+        "name": "platform-team",
+        "arn": "azure:object/cccccccc-0000-0000-0000-000000000003",
+        "created_at": null,
+        "inline_policies": {},
+        "attached_managed_policies": [
+          {
+            "name": "Reader",
+            "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48f9-8fd7-018f2369c0a4",
+            "kind": "builtin"
+          }
+        ]
+      }
+    ],
+    "managed_policies": {
+      "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/11111111-2222-3333-4444-555555555555": {
+        "name": "VMManager",
+        "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/11111111-2222-3333-4444-555555555555",
+        "kind": "custom",
+        "default_version_id": null,
+        "document": {
+          "roleName": "VMManager",
+          "type": "CustomRole",
+          "permissions": [
+            {
+              "actions": [
+                "microsoft.compute/virtualmachines/read",
+                "microsoft.compute/virtualmachines/start/action",
+                "microsoft.compute/virtualmachines/deallocate/action"
+              ]
+            }
+          ]
+        },
+        "document_status": "available",
+        "attached_to": [
+          "deploy-agent"
+        ]
+      },
+      "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/2a2b9908-6ea1-4ae2-b6a1-4a886027ee6c": {
+        "name": "BlobReader",
+        "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/2a2b9908-6ea1-4ae2-b6a1-4a886027ee6c",
+        "kind": "custom",
+        "default_version_id": null,
+        "document": {
+          "roleName": "BlobReader",
+          "type": "CustomRole",
+          "permissions": [
+            {
+              "actions": [
+                "microsoft.storage/storageaccounts/read"
+              ],
+              "dataActions": [
+                "microsoft.storage/blob/containers/read",
+                "microsoft.storage/blob/containers/blobs/read"
+              ]
+            }
+          ]
+        },
+        "document_status": "available",
+        "attached_to": [
+          "zeynep@contoso.com"
+        ]
+      },
+      "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/66666666-7777-8888-9999-000000000000": {
+        "name": "StorageAccountKeyOperator",
+        "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/66666666-7777-8888-9999-000000000000",
+        "kind": "custom",
+        "default_version_id": null,
+        "document": {
+          "roleName": "StorageAccountKeyOperator",
+          "type": "CustomRole",
+          "permissions": [
+            {
+              "actions": [
+                "microsoft.storage/storageaccounts/listkeys/action"
+              ]
+            }
+          ]
+        },
+        "document_status": "available",
+        "attached_to": [
+          "mi-backup-job"
+        ]
+      },
+      "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48f9-8fd7-018f2369c0a4": {
+        "name": "Reader",
+        "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48f9-8fd7-018f2369c0a4",
+        "kind": "builtin",
+        "default_version_id": null,
+        "document": {
+          "roleName": "Reader",
+          "type": "BuiltInRole",
+          "permissions": [
+            {
+              "actions": [
+                "*/read"
+              ]
+            }
+          ]
+        },
+        "document_status": "available",
+        "attached_to": [
+          "platform-team"
+        ]
+      },
+      "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c": {
+        "name": "Contributor",
+        "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c",
+        "kind": "builtin",
+        "default_version_id": null,
+        "document": {
+          "roleName": "Contributor",
+          "type": "BuiltInRole",
+          "permissions": [
+            {
+              "actions": [
+                "*"
+              ],
+              "notActions": [
+                "microsoft.authorization/*/write"
+              ]
+            }
+          ]
+        },
+        "document_status": "available",
+        "attached_to": [
+          "zeynep@contoso.com"
+        ]
+      }
+    }
+  },
+  "activity": {
+    "window": {
+      "start": "2026-10-11T12:00:00+00:00",
+      "end": "2026-11-10T12:00:00+00:00",
+      "lookback_days": 30,
+      "source": "azure:activity_logs",
+      "truncated": false
+    },
+    "usage": {
+      "role:mi-backup-job": {
+        "event_count": 1,
+        "error_event_count": 1,
+        "action_counts": {
+          "microsoft.storage/storageaccounts/listkeys/action": 1
+        },
+        "error_action_counts": {
+          "microsoft.storage/storageaccounts/listkeys/action": 1
+        },
+        "first_seen": "2026-11-08T12:00:00+00:00",
+        "last_seen": "2026-11-08T12:00:00+00:00"
+      },
+      "unknown:eeeeeeee-0000-0000-0000-000000000005": {
+        "event_count": 1,
+        "error_event_count": 0,
+        "action_counts": {
+          "microsoft.resources/subscriptions/read": 1
+        },
+        "error_action_counts": {},
+        "first_seen": "2026-11-03T12:00:00+00:00",
+        "last_seen": "2026-11-03T12:00:00+00:00"
+      },
+      "user:zeynep@contoso.com": {
+        "event_count": 4,
+        "error_event_count": 1,
+        "action_counts": {
+          "microsoft.storage/storageaccounts/read": 2,
+          "microsoft.storage/blob/containers/read": 1,
+          "microsoft.authorization/roleassignments/write": 1
+        },
+        "error_action_counts": {
+          "microsoft.authorization/roleassignments/write": 1
+        },
+        "first_seen": "2026-11-05T12:00:00+00:00",
+        "last_seen": "2026-11-07T12:00:00+00:00"
+      }
+    },
+    "events": [
+      {
+        "event_id": "evt-Microsoft.Storage-storageAccounts-read-zeynep-contoso.com-Succeeded",
+        "time": "2026-11-05T12:00:00+00:00",
+        "principal": {
+          "kind": "user",
+          "name": "zeynep@contoso.com",
+          "arn": null,
+          "session": null,
+          "account_id": "00000000-1111-2222-3333-444444444444"
+        },
+        "service": "microsoft.storage",
+        "action": "microsoft.storage/storageaccounts/read",
+        "event_source": "microsoft.storage",
+        "event_name": "read",
+        "is_error": false,
+        "error_code": "Succeeded",
+        "read_only": true
+      },
+      {
+        "event_id": "evt-Microsoft.Storage-storageAccounts-read-zeynep-contoso.com-Succeeded",
+        "time": "2026-11-06T12:00:00+00:00",
+        "principal": {
+          "kind": "user",
+          "name": "zeynep@contoso.com",
+          "arn": null,
+          "session": null,
+          "account_id": "00000000-1111-2222-3333-444444444444"
+        },
+        "service": "microsoft.storage",
+        "action": "microsoft.storage/storageaccounts/read",
+        "event_source": "microsoft.storage",
+        "event_name": "read",
+        "is_error": false,
+        "error_code": "Succeeded",
+        "read_only": true
+      },
+      {
+        "event_id": "evt-Microsoft.Storage-blob-containers-read-zeynep-contoso.com-Succeeded",
+        "time": "2026-11-06T12:00:00+00:00",
+        "principal": {
+          "kind": "user",
+          "name": "zeynep@contoso.com",
+          "arn": null,
+          "session": null,
+          "account_id": "00000000-1111-2222-3333-444444444444"
+        },
+        "service": "microsoft.storage",
+        "action": "microsoft.storage/blob/containers/read",
+        "event_source": "microsoft.storage",
+        "event_name": "read",
+        "is_error": false,
+        "error_code": "Succeeded",
+        "read_only": true
+      },
+      {
+        "event_id": "evt-Microsoft.Authorization-roleAssignments-write-zeynep-contoso.com-Failed",
+        "time": "2026-11-07T12:00:00+00:00",
+        "principal": {
+          "kind": "user",
+          "name": "zeynep@contoso.com",
+          "arn": null,
+          "session": null,
+          "account_id": "00000000-1111-2222-3333-444444444444"
+        },
+        "service": "microsoft.authorization",
+        "action": "microsoft.authorization/roleassignments/write",
+        "event_source": "microsoft.authorization",
+        "event_name": "write",
+        "is_error": true,
+        "error_code": "Failed",
+        "read_only": false
+      },
+      {
+        "event_id": "evt-Microsoft.Storage-storageAccounts-listKeys-action-mi-backup-job-Failed",
+        "time": "2026-11-08T12:00:00+00:00",
+        "principal": {
+          "kind": "role",
+          "name": "mi-backup-job",
+          "arn": null,
+          "session": null,
+          "account_id": "00000000-1111-2222-3333-444444444444"
+        },
+        "service": "microsoft.storage",
+        "action": "microsoft.storage/storageaccounts/listkeys/action",
+        "event_source": "microsoft.storage",
+        "event_name": "action",
+        "is_error": true,
+        "error_code": "Failed",
+        "read_only": false
+      },
+      {
+        "event_id": "evt-Microsoft.Resources-subscriptions-read-eeeeeeee-0000-0000-0000-000000000005-Succeeded",
+        "time": "2026-11-03T12:00:00+00:00",
+        "principal": {
+          "kind": "unknown",
+          "name": "eeeeeeee-0000-0000-0000-000000000005",
+          "arn": null,
+          "session": null,
+          "account_id": "00000000-1111-2222-3333-444444444444"
+        },
+        "service": "microsoft.resources",
+        "action": "microsoft.resources/subscriptions/read",
+        "event_source": "microsoft.resources",
+        "event_name": "read",
+        "is_error": false,
+        "error_code": "Succeeded",
+        "read_only": true
+      }
+    ]
+  },
+  "principals": [
+    {
+      "kind": "group",
+      "name": "platform-team",
+      "arn": "azure:object/cccccccc-0000-0000-0000-000000000003",
+      "account_id": "00000000-1111-2222-3333-444444444444",
+      "permission_sources": {
+        "inline_policies": {},
+        "attached_managed_policies": [
+          {
+            "name": "Reader",
+            "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48f9-8fd7-018f2369c0a4",
+            "kind": "builtin",
+            "document": {
+              "roleName": "Reader",
+              "type": "BuiltInRole",
+              "permissions": [
+                {
+                  "actions": [
+                    "*/read"
+                  ]
+                }
+              ]
+            },
+            "document_status": "available"
+          }
+        ],
+        "members": [
+          "zeynep@contoso.com"
+        ]
+      },
+      "observed_activity": null
+    },
+    {
+      "kind": "role",
+      "name": "deploy-agent",
+      "arn": "azure:object/bbbbbbbb-0000-0000-0000-000000000002",
+      "account_id": "00000000-1111-2222-3333-444444444444",
+      "created_at": null,
+      "tags": {
+        "principalId": "bbbbbbbb-0000-0000-0000-000000000002",
+        "azurePrincipalType": "servicePrincipal"
+      },
+      "trust_policy": {},
+      "permission_sources": {
+        "inline_policies": {},
+        "attached_managed_policies": [
+          {
+            "name": "VMManager",
+            "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/11111111-2222-3333-4444-555555555555",
+            "kind": "custom",
+            "document": {
+              "roleName": "VMManager",
+              "type": "CustomRole",
+              "permissions": [
+                {
+                  "actions": [
+                    "microsoft.compute/virtualmachines/read",
+                    "microsoft.compute/virtualmachines/start/action",
+                    "microsoft.compute/virtualmachines/deallocate/action"
+                  ]
+                }
+              ]
+            },
+            "document_status": "available"
+          }
+        ],
+        "permission_boundary_arn": null
+      },
+      "observed_activity": {
+        "event_count": 0,
+        "error_event_count": 0,
+        "action_counts": {},
+        "error_action_counts": {},
+        "first_seen": null,
+        "last_seen": null
+      }
+    },
+    {
+      "kind": "role",
+      "name": "mi-backup-job",
+      "arn": "azure:object/dddddddd-0000-0000-0000-000000000004",
+      "account_id": "00000000-1111-2222-3333-444444444444",
+      "created_at": null,
+      "tags": {
+        "principalId": "dddddddd-0000-0000-0000-000000000004",
+        "azurePrincipalType": "managedIdentity"
+      },
+      "trust_policy": {},
+      "permission_sources": {
+        "inline_policies": {},
+        "attached_managed_policies": [
+          {
+            "name": "StorageAccountKeyOperator",
+            "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/66666666-7777-8888-9999-000000000000",
+            "kind": "custom",
+            "document": {
+              "roleName": "StorageAccountKeyOperator",
+              "type": "CustomRole",
+              "permissions": [
+                {
+                  "actions": [
+                    "microsoft.storage/storageaccounts/listkeys/action"
+                  ]
+                }
+              ]
+            },
+            "document_status": "available"
+          }
+        ],
+        "permission_boundary_arn": null
+      },
+      "observed_activity": {
+        "event_count": 1,
+        "error_event_count": 1,
+        "action_counts": {
+          "microsoft.storage/storageaccounts/listkeys/action": 1
+        },
+        "error_action_counts": {
+          "microsoft.storage/storageaccounts/listkeys/action": 1
+        },
+        "first_seen": "2026-11-08T12:00:00+00:00",
+        "last_seen": "2026-11-08T12:00:00+00:00"
+      }
+    },
+    {
+      "kind": "user",
+      "name": "zeynep@contoso.com",
+      "arn": "azure:object/aaaaaaaa-0000-0000-0000-000000000001",
+      "account_id": "00000000-1111-2222-3333-444444444444",
+      "created_at": null,
+      "tags": {
+        "principalId": "aaaaaaaa-0000-0000-0000-000000000001"
+      },
+      "permission_sources": {
+        "inline_policies": {},
+        "attached_managed_policies": [
+          {
+            "name": "Contributor",
+            "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c",
+            "kind": "builtin",
+            "document": {
+              "roleName": "Contributor",
+              "type": "BuiltInRole",
+              "permissions": [
+                {
+                  "actions": [
+                    "*"
+                  ],
+                  "notActions": [
+                    "microsoft.authorization/*/write"
+                  ]
+                }
+              ]
+            },
+            "document_status": "available"
+          },
+          {
+            "name": "BlobReader",
+            "arn": "/subscriptions/00000000-1111-2222-3333-444444444444/providers/Microsoft.Authorization/roleDefinitions/2a2b9908-6ea1-4ae2-b6a1-4a886027ee6c",
+            "kind": "custom",
+            "document": {
+              "roleName": "BlobReader",
+              "type": "CustomRole",
+              "permissions": [
+                {
+                  "actions": [
+                    "microsoft.storage/storageaccounts/read"
+                  ],
+                  "dataActions": [
+                    "microsoft.storage/blob/containers/read",
+                    "microsoft.storage/blob/containers/blobs/read"
+                  ]
+                }
+              ]
+            },
+            "document_status": "available"
+          }
+        ],
+        "via_groups": [
+          "platform-team"
+        ],
+        "permission_boundary_arn": null
+      },
+      "observed_activity": {
+        "event_count": 4,
+        "error_event_count": 1,
+        "action_counts": {
+          "microsoft.storage/storageaccounts/read": 2,
+          "microsoft.storage/blob/containers/read": 1,
+          "microsoft.authorization/roleassignments/write": 1
+        },
+        "error_action_counts": {
+          "microsoft.authorization/roleassignments/write": 1
+        },
+        "first_seen": "2026-11-05T12:00:00+00:00",
+        "last_seen": "2026-11-07T12:00:00+00:00"
+      }
+    }
+  ],
+  "unmatched_activity": [
+    {
+      "kind": "unknown",
+      "name": "eeeeeeee-0000-0000-0000-000000000005",
+      "summary": {
+        "event_count": 1,
+        "error_event_count": 0,
+        "action_counts": {
+          "microsoft.resources/subscriptions/read": 1
+        },
+        "error_action_counts": {},
+        "first_seen": "2026-11-03T12:00:00+00:00",
+        "last_seen": "2026-11-03T12:00:00+00:00"
+      }
+    }
+  ]
+}
