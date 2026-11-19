@@ -35,6 +35,14 @@ class GrantedAction:
     used: bool
     error_only: bool  # every observed invocation failed (permission does not work)
     access_level: str | None  # Read/Write/... from the dataset
+    # Was the action granted by a DATA-plane clause rather than a control-plane
+    # one? On AWS the distinction is not explicit in the policy document, so
+    # the analyzer classifies it from the service (see
+    # ``_DATA_PLANE_SERVICE_PREFIXES``); on Azure the matcher carries the
+    # distinction from ``dataActions`` verbatim. Data-plane grants are the
+    # ones whose usage ``lookup_events`` / Activity Log cannot see, so they
+    # drive the ``unknown_usage_actions`` classification.
+    data_plane: bool = False
 
 
 @dataclass
@@ -112,8 +120,11 @@ class PrincipalFinding:
         ``conditional_grants`` lists used actions whose original grants
         carried a Condition — models must copy the original Condition
         verbatim; permtrim itself does not evaluate conditions.
+        ``used_data_plane_actions`` lets an Azure proposer route the used
+        data-plane actions back into ``dataActions`` (control vs data plane
+        must survive the round trip — the deterministic proposer uses it).
         """
-        return {
+        payload: dict[str, Any] = {
             "kind": self.kind,
             "name": self.name,
             "arn": self.arn,
@@ -121,13 +132,25 @@ class PrincipalFinding:
             "used_actions": list(self.used_actions),
             "unused_examples": [g.action for g in self.unused_actions[:15]],
             "wildcard_sources": [w.get("pattern") for w in self.wildcard_sources[:10]],
-            **(
-                {"used_action_resources": {k: list(v) for k, v in self.used_action_resources.items()}}
-                if self.used_action_resources
-                else {}
-            ),
-            **({"conditional_grants": list(self.conditional_grants)} if self.conditional_grants else {}),
         }
+        if self.used_action_resources:
+            payload["used_action_resources"] = {k: list(v) for k, v in self.used_action_resources.items()}
+        if self.conditional_grants:
+            payload["conditional_grants"] = list(self.conditional_grants)
+        if self.provider == "azure":
+            payload["used_data_plane_actions"] = self.used_data_plane_actions
+        return payload
+
+    @property
+    def used_data_plane_actions(self) -> list[str]:
+        """Used actions that came in via a data-plane grant (``dataActions``).
+
+        On Azure the deterministic proposer routes these back into
+        ``dataActions`` instead of ``actions`` so the tightened role keeps the
+        control/data-plane split the original role had (the guardrail and the
+        ``az role definition create`` payload both expect it).
+        """
+        return sorted(g.action for g in self.granted_actions if g.used and g.data_plane and not g.error_only)
 
 
 @dataclass
