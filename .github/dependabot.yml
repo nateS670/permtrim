@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # Python application dependencies
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      dev-dependencies:
+        patterns:
+          - "pytest*"
+          - "ruff"
+          - "mypy*"
+          - "pytest-cov"
+      runtime-dependencies:
+        patterns:
+          - "boto3"
+          - "azure*"
+          - "neo4j"
+          - "matplotlib"
+          - "pillow"
+
+  # GitHub Actions workflow versions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
