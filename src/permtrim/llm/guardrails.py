@@ -21,12 +21,25 @@ An LLM draft is accepted only after passing ALL of these checks:
 5. **No new permissions** — the draft must not grant actions the principal
    never had (blocks the classic LLM failure of 'fixing' coverage with
    ``Action: "*"``). Draft wildcards are clamped to the original grants.
-6. **Resource scope no wider than original** — for used actions whose
+6. **Unused removal** — every action the draft allows must be one the
+   principal was actually observed using (working) or at least attempting
+   (error-only). A draft that re-proposes the old broad grants — e.g.
+   ``Action: "*"`` for a principal whose original policy was ``*`` but who
+   only ever used one action — is rejected even though it adds no *new*
+   permission, because it preserves the excess the tightener exists to
+   remove. In AWS drafts this is enforced by refusing wildcard patterns
+   outright: a least-privilege replacement lists the concrete actions.
+7. **Resource scope no wider than original** — for used actions whose
    original grants carried resource scopes, the draft must not widen them:
    allowing an action on ``"*"`` when the principal only ever had it on
    ``arn:...:bucket/corp-data/*`` is a scope expansion. Drafts that widen
    any resource scope are rejected, not just flagged.
-7. **Live simulator (optional)** — when a ``simulator`` callable is wired
+8. **No Deny statements** — AWS drafts containing ``Effect: "Deny"`` are
+   rejected outright: coverage is checked over Allow statements only, and an
+   explicit Deny silently overrides them in real IAM evaluation (it could
+   block a used action while the guardrail sees full coverage). Tightened
+   replacement policies are Allow-only by design.
+9. **Live simulator (optional)** — when a ``simulator`` callable is wired
    (boto3 ``iam:SimulatePrincipalPolicy``), AWS itself gets the final word
    on the used actions. Offline runs (demo, tests, CI) omit it.
 
@@ -122,6 +135,7 @@ class Guardrail:
         self._check_coverage(finding, statements, reasons)
         allowed = self._expanded_allowed(statements)
         self._check_no_new_permissions(finding, statements, allowed, reasons)
+        self._check_unused_removal(finding, statements, allowed, reasons)
         self._check_resource_scope(finding, statements, reasons)
 
         if self._simulator is not None and not reasons:
@@ -196,7 +210,13 @@ class Guardrail:
             )
 
     def _check_structure(self, draft: dict[str, Any], reasons: list[str]) -> list[dict[str, Any]]:
-        """Statement-level structural validation; returns the Allow statements."""
+        """Statement-level structural validation; returns the Allow statements.
+
+        AWS drafts must be Allow-only: a ``Deny`` statement is rejected
+        outright (coverage is checked over Allows, but a real explicit Deny
+        overrides every Allow — see the module docstring, check 8). Azure
+        drafts have no Deny concept to begin with.
+        """
         raw = draft.get("Statement")
         if isinstance(raw, dict):
             raw = [raw]
@@ -220,8 +240,17 @@ class Guardrail:
             if not (statement.get("Action") or statement.get("NotAction")):
                 reasons.append(f"{label} has neither Action nor NotAction")
                 continue
-            if effect == "allow":
-                allows.append(statement)
+            if effect == "deny":
+                # A Deny would override the Allows while the coverage check
+                # only evaluates Allows — refuse it so the coverage verdict
+                # cannot be bypassed (Allow s3:GetObject + Deny s3:GetObject).
+                reasons.append(
+                    f"{label} is a Deny statement — tightened policies are Allow-only; "
+                    "the guardrail validates coverage over Allow statements and a Deny "
+                    "would silently override them in real IAM evaluation"
+                )
+                continue
+            allows.append(statement)
         return allows
 
     def _check_hallucinations(self, statements: list[dict[str, Any]], reasons: list[str]) -> None:
@@ -338,4 +367,63 @@ class Guardrail:
                     if len(new_permissions) > len(sample)
                     else ""
                 )
+            )
+
+    def _check_unused_removal(
+        self,
+        finding: PrincipalFinding,
+        statements: list[dict[str, Any]],
+        allowed: set[str],
+        reasons: list[str],
+    ) -> None:
+        """The draft must actually REMOVE the unused excess permissions.
+
+        "No new permissions" alone is not enough: a draft that re-proposes
+        the principal's ORIGINAL grants adds nothing new yet keeps every
+        unused permission the tightener exists to remove. The extreme case:
+        original policy ``Action: "*"`` + one used action + an LLM that
+        proposes ``Action: "*"`` back — no-new-permissions passes (the
+        wildcard's expansion is a subset of the original grants) and
+        coverage passes, so without this check the old blast radius would
+        ship as a "validated" least-privilege policy.
+
+        Baseline: actions with observed usage (working) or attempts
+        (error-only — the principal may need them, and the tightener keeps
+        attempted actions conservative). The draft's allowed set must be a
+        subset of that baseline. A draft that allows nothing from the
+        baseline fails coverage upstream, so no empty-policy hole exists.
+
+        AWS drafts: wildcard Action patterns are refused outright — a
+        least-privilege replacement lists concrete actions (the deterministic
+        fallback does exactly that and remains valid). Azure drafts
+        (``permissions`` shape): wildcards stay allowed because the whole
+        point is re-scoping e.g. ``microsoft.storage/*`` down to the used
+        data-plane slice; the subset check still applies to their expansion.
+        """
+        wildcards: set[str] = set()
+        for statement in statements:
+            for pattern in as_pattern_list(statement.get("Action")):
+                if "*" in pattern or "?" in pattern:
+                    wildcards.add(pattern)
+        if wildcards and finding.provider != "azure":
+            sample = sorted(wildcards)[:_NEW_PERMISSION_SAMPLE]
+            reasons.append(
+                "wildcard Action patterns are not accepted in tightened AWS policies "
+                "(they re-grant unused permissions): "
+                + ", ".join(sample)
+                + " — list the concrete actions instead"
+            )
+            return  # the subset check below would only duplicate the noise
+
+        baseline = set(finding.used_actions) | {g.action for g in finding.granted_actions if g.error_only}
+        if not baseline:
+            return  # idle: coverage already demanded nothing; drafts with actions fail
+        excess = allowed - baseline
+        if excess:
+            sample = sorted(excess)[:_NEW_PERMISSION_SAMPLE]
+            reasons.append(
+                "draft keeps actions with no observed usage — a tightened policy must "
+                "only contain used (or attempted) actions: "
+                + ", ".join(sample)
+                + (f" (+{len(excess) - len(sample)} more)" if len(excess) > len(sample) else "")
             )
