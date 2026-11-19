@@ -243,6 +243,109 @@ class TestGuardrail:
         assert any("simulator" in reason for reason in verdict.reasons)
 
 
+class TestUnusedRemoval:
+    """Regression: an LLM may preserve the old broad grants verbatim.
+
+    A principal with Action "*" who used ONE action, and an LLM that
+    proposes "*" back: no-new-permissions passes (the expansion is a subset
+    of the original grants) and coverage passes — the old blast radius would
+    ship as "validated". Both holes are pinned shut here.
+    """
+
+    @staticmethod
+    def _admin_finding(registry) -> PrincipalFinding:
+        """granted = the full '*' expansion (20455 actions); used = 1."""
+        every = registry.expand("*")
+        return PrincipalFinding(
+            kind="user",
+            name="dave",
+            arn=None,
+            used_actions=["s3:getobject"],
+            granted_actions=[
+                GrantedAction(a, ["managed:Admin@user/dave"], a == "s3:getobject", False, "Read")
+                for a in every
+            ],
+            used_action_resources={"s3:getobject": ["*"]},
+        )
+
+    def test_star_draft_for_admin_principal_rejected(self, registry):
+        """THE regression test: original policy '*', one used action, LLM
+        proposes '*' back — must be rejected, not validated."""
+        finding = self._admin_finding(registry)
+        draft = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert any("wildcard Action patterns" in reason for reason in verdict.reasons)
+
+    def test_literal_regrant_of_unused_actions_rejected(self, registry):
+        """Draft keeps unused actions as literals — still no unused removal."""
+        finding = self._admin_finding(registry)
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {"Effect": "Allow", "Action": ["s3:GetObject", "ec2:RunInstances"], "Resource": "*"}
+            ],
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert any("no observed usage" in reason for reason in verdict.reasons)
+
+    def test_attempted_error_only_actions_stay_allowed(self, registry):
+        """Error-only (attempted) actions are legitimate policy content:
+        the principal demonstrably needs them, the calls just failed."""
+        finding = PrincipalFinding(
+            kind="user",
+            name="erin",
+            arn=None,
+            used_actions=["s3:getobject"],
+            granted_actions=[
+                GrantedAction("s3:getobject", ["m"], True, False, "Read"),
+                GrantedAction("ec2:runinstances", ["m"], False, True, "Write"),  # error_only
+            ],
+            used_action_resources={"s3:getobject": ["*"]},
+        )
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {"Effect": "Allow", "Action": ["s3:GetObject", "ec2:RunInstances"], "Resource": "*"}
+            ],
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert verdict.ok, verdict.reasons
+
+
+class TestDenyStatementRejected:
+    """Regression: Allow + Deny could bypass the coverage check.
+
+    The guardrail evaluates coverage over Allow statements only, but real
+    IAM lets an explicit Deny override every Allow — a draft pairing
+    Allow(s3:GetObject) with Deny(s3:GetObject) would "pass" coverage while
+    breaking the principal in production. Deny statements are refused.
+    """
+
+    def test_allow_plus_deny_same_action_rejected(self, registry):
+        finding = make_finding()
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "arn:aws:s3:::corp-data/*"},
+                {"Effect": "Deny", "Action": ["s3:GetObject"], "Resource": "*"},
+            ],
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert any("Deny statement" in reason for reason in verdict.reasons)
+
+    def test_deny_only_draft_rejected(self, registry):
+        finding = make_finding()
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Deny", "Action": ["s3:*"], "Resource": "*"}],
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+
+
 # --------------------------------------------------------- hallucination loop
 
 
@@ -345,6 +448,139 @@ class TestInsufficientDataGuard:
         ).tighten(_report_with(finding, window_truncated=True))
         assert result.outcomes[0].status in {"verified", "needs_review"}
         assert result.outcomes[0].policy is not None
+
+
+class TestConditionalGrantsGuard:
+    """Original grants carrying Condition elements must not be auto-replaced.
+
+    permtrim does not evaluate conditions (MFA, VPC endpoint, ...): a
+    generated replacement without the Condition would silently WIDEN
+    effective access. The tightener refuses and flags manual review.
+    """
+
+    @staticmethod
+    def _conditional_finding() -> PrincipalFinding:
+        return PrincipalFinding(
+            kind="user",
+            name="mallory",
+            arn=None,
+            used_actions=["s3:getobject"],
+            granted_actions=[GrantedAction("s3:getobject", ["inline:mfa@user/mallory"], True, False, "Read")],
+            used_action_resources={"s3:getobject": ["*"]},
+            conditional_grants=["s3:getobject"],
+        )
+
+    def test_conditional_grant_stops_tightener(self, registry):
+        finding = self._conditional_finding()
+        llm = ScriptedLLM([{"Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "*"}]}])
+        result = Tightener(llm, registry).tighten(_report_with(finding))
+        outcome = result.outcomes[0]
+        assert outcome.status == "manual_review"
+        assert outcome.policy is None
+        assert llm.calls == []  # proposer never even asked
+        assert "Condition" in outcome.attempts[0]
+
+    def test_end_to_end_engine_detects_condition(self):
+        """The analyzer flags Condition-carrying grants end to end."""
+        from datetime import datetime, timezone
+
+        from permtrim.analyzer.engine import Analyzer
+        from permtrim.models.activity import ActivityLog, ActivityWindow, UsageSummary
+        from permtrim.models.iam import IaMSnapshot, IAMUser
+
+        now = datetime.now(timezone.utc)
+        mfa_doc = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": ["s3:GetObject"],
+                    "Resource": "*",
+                    "Condition": {"Bool": {"aws:MultiFactorAuthPresent": "true"}},
+                }
+            ],
+        }
+        iam = IaMSnapshot(
+            account_id="1",
+            collector_identity_arn="arn",
+            collected_at=now,
+            users=[IAMUser(name="mallory", arn="arn:u", inline_policies={"mfa": mfa_doc})],
+            roles=[],
+            groups=[],
+            policies={},
+        )
+        activity = ActivityLog(
+            window=ActivityWindow(start=now, end=now, lookback_days=30),
+            events=[],
+            usage={("user", "mallory"): UsageSummary(action_counts={"s3:GetObject": 5})},
+        )
+        report = Analyzer().analyze(iam, activity)
+        finding = report.findings[0]
+        assert finding.conditional_grants == ["s3:getobject"]
+        assert "s3:getobject" in finding.to_dict()["conditional_grants"]
+
+
+class TestUnknownDataPlaneUsageGuard:
+    """Unused-LOOKING data-plane grants: usage is invisible, not absent.
+
+    lookup_events returns management events only; s3/lambda/dynamodb/qldb
+    usage never shows up. The tightener must refuse to strip such grants
+    unless the operator explicitly opts in.
+    """
+
+    @staticmethod
+    def _data_plane_finding() -> PrincipalFinding:
+        return PrincipalFinding(
+            kind="user",
+            name="frank",
+            arn=None,
+            used_actions=["ec2:describeinstances"],
+            granted_actions=[
+                GrantedAction("ec2:describeinstances", ["m"], True, False, "Read"),
+                GrantedAction("s3:getobject", ["m"], False, False, "Read"),  # data plane, unused-looking
+            ],
+            used_action_resources={"ec2:describeinstances": ["*"]},
+            unknown_usage_actions=["s3:getobject"],
+        )
+
+    def test_unknown_data_plane_stops_tightener(self, registry):
+        finding = self._data_plane_finding()
+        llm = ScriptedLLM(
+            [{"Statement": [{"Effect": "Allow", "Action": ["ec2:DescribeInstances"], "Resource": "*"}]}]
+        )
+        result = Tightener(llm, registry).tighten(_report_with(finding))
+        outcome = result.outcomes[0]
+        assert outcome.status == "manual_review"
+        assert outcome.policy is None
+        assert llm.calls == []
+        assert "data events" in outcome.attempts[0] or "DATA-PLANE" in outcome.attempts[0]
+
+    def test_opt_in_flag_allows_tightening(self, registry):
+        finding = self._data_plane_finding()
+        llm = ScriptedLLM(
+            [{"Statement": [{"Effect": "Allow", "Action": ["ec2:DescribeInstances"], "Resource": "*"}]}]
+        )
+        result = Tightener(llm, registry, TightenerConfig(allow_unknown_data_plane_usage=True)).tighten(
+            _report_with(finding)
+        )
+        outcome = result.outcomes[0]
+        assert outcome.status == "verified"
+        assert outcome.policy is not None
+
+    def test_used_data_plane_actions_do_not_block(self, registry):
+        """A data-plane action that WAS observed used is not unknown usage."""
+        finding = PrincipalFinding(
+            kind="user",
+            name="gina",
+            arn=None,
+            used_actions=["s3:getobject"],
+            granted_actions=[GrantedAction("s3:getobject", ["m"], True, False, "Read")],
+            used_action_resources={"s3:getobject": ["*"]},
+            unknown_usage_actions=[],
+        )
+        llm = ScriptedLLM([{"Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "*"}]}])
+        result = Tightener(llm, registry).tighten(_report_with(finding))
+        assert result.outcomes[0].status == "verified"
 
 
 class TestResourceScopeProvenance:
