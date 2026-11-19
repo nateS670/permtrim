@@ -107,4 +107,5 @@ def _summarize(session: Any) -> Neo4jIngestSummary:
         for edge_type in ("MEMBER_OF", "GRANTED", "ALLOWS", "CAN_USE", "INVOKED", "ATTEMPTED")
     }
     nodes["total"] = sum(nodes.values())
+    edges["total"] = sum(edges.values())
     return Neo4jIngestSummary(nodes=nodes, edges=edges)
