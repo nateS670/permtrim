@@ -1,3 +1,4 @@
+
 # Security Policy
 
 permtrim is a security tool that audits cloud IAM environments, so the
@@ -65,4 +66,4 @@ Please include the following in your report:
 - Collectors make **read-only** API calls only; a new provider collector
   must not break this principle.
 - LLM output is never written into Terraform unverified: the guardrail layer
-  cannot be bypassed (see `src/permtrim/tightener/guardrail.py`).
+  cannot be bypassed (see `src/permtrim/llm/guardrails.py`).
