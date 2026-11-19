@@ -44,6 +44,11 @@ dev = [
     "pytest-cov>=5",
     "mypy>=1.10",
     "ruff>=0.6",
+    # test_graph.py's render test asserts the PNG is not blank, and the
+    # render path itself needs matplotlib — both optional at runtime
+    # (CLI degrades gracefully), but pinned here so CI always covers them.
+    "matplotlib>=3.8",
+    "Pillow>=10",
 ]
 
 [project.scripts]
@@ -84,7 +89,9 @@ warn_unused_ignores = false
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["boto3", "botocore.*"]
+# Optional runtime extras: the lint job pins them via pip extras, but mypy
+# must also pass in environments where only the core package is installed.
+module = ["boto3", "botocore.*", "matplotlib", "matplotlib.*", "neo4j", "neo4j.*", "azure.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
