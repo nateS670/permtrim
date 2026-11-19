@@ -126,18 +126,26 @@ class TestAnalyzerOnSample:
         # inline s3:Get* and the group's EC2 policies are subsets of it.
         assert alice.granted_count == 20455
         assert alice.used_actions == ["s3:getobject"]
-        # data-plane grants (s3/lambda/dynamodb/qldb) have UNKNOWN usage —
+        # data-EVENT grants (per-action classification) have UNKNOWN usage —
         # lookup_events cannot see data events — so they are excluded from
-        # the unused count and reported separately instead.
+        # the unused count and reported separately instead. Management-event
+        # grants (s3:CreateBucket, sns:Subscribe, ...) are analyzed normally.
         unknown = len(alice.unknown_usage_actions)
-        assert unknown == sum(
-            1
-            for g in alice.granted_actions
-            if not g.used and g.action.startswith(("s3:", "lambda:", "dynamodb:", "qldb:"))
-        )
-        assert unknown > 300  # AdministratorAccess covers all data-plane services
+        assert unknown == sum(1 for g in alice.granted_actions if not g.used and g.data_plane)
+        assert unknown > 100  # every documented data event of the '*' grant
         assert alice.unused_count == alice.granted_count - 1 - unknown
         assert "s3:getobject" not in alice.unknown_usage_actions  # used ones stay used
+        # explicit uncertainty: the subset the classification table could not
+        # place; it must be a subset of the unknown-usage set (never of the
+        # unused set)
+        assert alice.unclassified_actions
+        assert set(alice.unclassified_actions) <= set(alice.unknown_usage_actions)
+        # the over-inclusion fix on the real sample: management s3 actions
+        # are removable, data events are not
+        unused_names = {g.action for g in alice.unused_actions}
+        assert "s3:createbucket" in unused_names
+        assert "s3:getobject" not in unused_names
+        assert "s3:getobject" in set(alice.used_actions)
 
     def test_alice_wildcards_reported(self, sample_report):
         alice = next(f for f in sample_report.findings if f.name == "alice")
@@ -265,24 +273,57 @@ class TestErrorOnlyUsage:
 
 
 class TestDataPlaneClassification:
-    """P1-AWS: data-plane classification is a single table; invisible-to-
-    lookup_events usage never falls through to ``unused_actions``.
+    """P1-AWS: data-plane classification is per ACTION, not per service.
 
-    A service in the table is "unknown usage" (the tightener stops); a
-    service NOT in the table but still on the data plane would today be
-    misclassified as unused — that is the documented gap, and adding the
-    service to ``_DATA_PLANE_SERVICE_PREFIXES`` is the single-place fix.
+    CloudTrail data events are invisible to lookup_events, management events
+    are not — so within one service (S3: GetObject vs CreateBucket) the two
+    categories must separate. Documented data events and documented
+    management events each come from the transcribed tables; an action of a
+    mixed service that is in NEITHER table classifies as "unclassified" and
+    defaults to the conservative side (data-plane: unknown usage, surfaced on
+    the finding, never silently removable).
     """
 
     def test_is_data_plane_helper_aws(self):
         from permtrim.analyzer.engine import is_data_plane_action
 
+        # documented data events
         assert is_data_plane_action("s3:getobject", provider="aws") is True
+        assert is_data_plane_action("s3:listbucket", provider="aws") is True  # ListObjects APIs
         assert is_data_plane_action("lambda:invokefunction", provider="aws") is True
         assert is_data_plane_action("dynamodb:getitem", provider="aws") is True
-        assert is_data_plane_action("qldb:execute", provider="aws") is True
+        assert is_data_plane_action("sns:publish", provider="aws") is True  # was the P1 gap
+        assert is_data_plane_action("sns:publishbatch", provider="aws") is True
+        assert is_data_plane_action("sqs:sendmessage", provider="aws") is True
+        assert is_data_plane_action("ebs:getsnapshotblock", provider="aws") is True
+        # documented management events — no manual-review noise for these
+        assert is_data_plane_action("s3:createbucket", provider="aws") is False
+        assert is_data_plane_action("sns:subscribe", provider="aws") is False
+        assert is_data_plane_action("sqs:createqueue", provider="aws") is False
+        assert is_data_plane_action("dynamodb:createtable", provider="aws") is False
+        assert is_data_plane_action("qldb:executestatement", provider="aws") is False
         assert is_data_plane_action("ec2:runinstances", provider="aws") is False
         assert is_data_plane_action("iam:createuser", provider="aws") is False
+
+    def test_classify_returns_three_states(self):
+        from permtrim.analyzer.engine import classify_aws_data_plane
+
+        assert classify_aws_data_plane("s3:getobject") == "data"
+        assert classify_aws_data_plane("s3:CreateBucket".lower()) == "management"
+        assert classify_aws_data_plane("s3-object-lambda:getobjectversion") == "unclassified"
+        assert classify_aws_data_plane("s3:getdataaccess") == "unclassified"
+        # services outside the data-event set have no data events at all
+        assert classify_aws_data_plane("ec2:runinstances") == "management"
+
+    def test_unclassified_action_defaults_conservative(self):
+        """An action of a mixed service missing from both tables must never
+        be droppable as unused: it is data-plane for the tightener AND
+        explicitly surfaced as unclassified."""
+        from permtrim.analyzer.engine import is_data_plane_action, is_unclassified_aws_action
+
+        for action in ("s3:getdataaccess", "s3-object-lambda:getobjectversion"):
+            assert is_unclassified_aws_action(action) is True
+            assert is_data_plane_action(action, provider="aws") is True
 
     def test_is_data_plane_helper_azure_is_noop(self):
         """On Azure the matcher carries the flag from dataActions; the helper
@@ -328,16 +369,51 @@ class TestDataPlaneClassification:
         granted = {g.action: g for g in finding.granted_actions}
         assert granted["s3:getobject"].data_plane is True
 
-    def test_unknown_service_outside_table_falls_to_unused(self):
-        """Documents the gap: a service NOT in the data-plane table but still
-        on the data plane is today classified as unused (its usage is invisible
-        too). Adding the service to the table lifts it out. This test pins
-        the current behaviour so the single-place fix is verifiable.
-        """
-        from permtrim.analyzer.engine import _DATA_PLANE_SERVICE_PREFIXES
+    def test_management_grant_unused_is_removed_not_unknown(self):
+        """The over-inclusion fix: s3:CreateBucket is a MANAGEMENT event —
+        visible to lookup_events — so an unused grant of it is confirmed
+        excess (unused_actions), not manual-review noise."""
+        from datetime import datetime, timezone
 
-        # confirm the table does NOT cover a hypothetical 'secretsmanager:'
-        # data-plane-ish service (it is control-plane in reality; this is a
-        # stand-in proving the table is the single decision point)
-        assert not any("secretsmanager:".startswith(p) for p in _DATA_PLANE_SERVICE_PREFIXES)
-        assert not any(p == "glue:" for p in _DATA_PLANE_SERVICE_PREFIXES)
+        from permtrim.analyzer.engine import Analyzer
+        from permtrim.models.activity import ActivityLog, ActivityWindow, UsageSummary
+        from permtrim.models.iam import IaMSnapshot, IAMUser
+
+        now = datetime.now(timezone.utc)
+        doc = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": ["s3:CreateBucket"], "Resource": "*"}],
+        }
+        iam = IaMSnapshot(
+            account_id="1",
+            collector_identity_arn="arn",
+            collected_at=now,
+            users=[IAMUser(name="u", arn="arn:u", inline_policies={"s3bucket": doc})],
+            roles=[],
+            groups=[],
+            policies={},
+        )
+        activity = ActivityLog(
+            window=ActivityWindow(start=now, end=now, lookback_days=30),
+            events=[],
+            usage={("user", "u"): UsageSummary(action_counts={})},
+        )
+        report = Analyzer().analyze(iam, activity)
+        finding = next(f for f in report.findings if f.name == "u")
+        assert finding.unknown_usage_actions == []
+        assert finding.unclassified_actions == []
+        assert finding.unused_count == 1
+
+    def test_unlisted_service_is_management(self):
+        """Services that contribute NO CloudTrail data events (per the
+        resource-type table) classify every action as management. The
+        residual limitation is the reverse case: a NEW data-event service
+        AWS introduces later must be added to ``_AWS_DATA_EVENT_SERVICES``
+        (see README) — until then its grants classify as management."""
+        from permtrim.analyzer.engine import _AWS_DATA_EVENT_SERVICES, classify_aws_data_plane
+
+        assert "secretsmanager" not in _AWS_DATA_EVENT_SERVICES
+        assert "glue" not in _AWS_DATA_EVENT_SERVICES
+        assert "qldb" not in _AWS_DATA_EVENT_SERVICES  # no data events at all
+        assert classify_aws_data_plane("secretsmanager:getsecretvalue") == "management"
+        assert classify_aws_data_plane("glue:getjob") == "management"
