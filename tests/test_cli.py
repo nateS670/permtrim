@@ -54,6 +54,9 @@ class TestTightenCommand:
             "deterministic",
             "--output",
             str(output),
+            # the sample's AdministratorAccess inevitably includes s3:* grants;
+            # the bundled window is known representative -> explicit opt-in
+            "--allow-unknown-data-plane-usage",
         )
         assert result.returncode == 0, result.stderr
         assert "user:alice" in result.stdout
@@ -74,6 +77,26 @@ class TestTightenCommand:
         assert result_doc["summary"]["verified"] == 1
         assert result_doc["summary"]["needs_review"] == 0
         assert result_doc["summary"]["idle"] == 1
+
+    def test_tighten_refuses_unknown_data_plane_usage_by_default(self, sample_copy, tmp_path):
+        """Without the opt-in flag, unused-looking data-plane grants stop
+        the tightener: lookup_events cannot see data events, so their usage
+        is unknown and dropping them could break production."""
+        output = tmp_path / "tightened_conservative"
+        result = run_cli(
+            "tighten",
+            str(sample_copy),
+            "--proposer",
+            "deterministic",
+            "--output",
+            str(output),
+        )
+        assert result.returncode == 0, result.stderr
+        assert "manual_review" in result.stdout
+        assert not (output / "tightened_policies.tf").exists()
+        result_doc = json.loads((output / "tightening_result.json").read_text(encoding="utf-8"))
+        assert result_doc["summary"]["manual_review"] == 1  # alice (s3:* grants)
+        assert result_doc["summary"]["verified"] == 0
 
     def test_tighten_truncated_window_refuses(self, sample_copy, tmp_path):
         """A truncated activity window must block automatic tightening."""
@@ -96,7 +119,8 @@ class TestTightenCommand:
         result_doc = json.loads((output / "tightening_result.json").read_text(encoding="utf-8"))
         assert result_doc["summary"]["insufficient_data"] == 2
 
-        # --allow-truncated-window is the explicit human override
+        # --allow-truncated-window is the explicit human override (combined
+        # with the data-plane opt-in: the sample grants AdministratorAccess)
         output2 = tmp_path / "tightened_truncated_ok"
         result2 = run_cli(
             "tighten",
@@ -106,6 +130,7 @@ class TestTightenCommand:
             "--output",
             str(output2),
             "--allow-truncated-window",
+            "--allow-unknown-data-plane-usage",
         )
         assert result2.returncode == 0, result2.stderr
         assert "verified" in result2.stdout
@@ -124,6 +149,7 @@ class TestTightenCommand:
             "http://127.0.0.1:1",
             "--output",
             str(output),
+            "--allow-unknown-data-plane-usage",
         )
         assert result.returncode == 0, result.stderr
         assert "verified" in result.stdout
