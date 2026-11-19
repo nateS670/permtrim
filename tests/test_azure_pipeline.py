@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 
 from permtrim.analyzer import Analyzer
-from permtrim.analyzer.azure_registry import build_azure_registry
+from permtrim.analyzer.azure_registry import AzureActionRegistry, build_azure_registry
+from permtrim.analyzer.findings import GrantedAction, PrincipalFinding
 from permtrim.graph import build_graph
 from permtrim.llm import DeterministicProposer, Tightener, TightenerConfig
 from permtrim.llm.guardrails import Guardrail
@@ -28,6 +29,15 @@ def document() -> dict:
 @pytest.fixture(scope="module")
 def report(document):
     return Analyzer().analyze_document(document)
+
+
+def _report_with(finding):
+    """Minimal one-finding AnalysisReport (mirrors test_llm_stage's helper)."""
+    from permtrim.analyzer.findings import AnalysisReport
+
+    return AnalysisReport(
+        account_id="1", lookback_days=30, window_truncated=False, dataset={}, findings=[finding]
+    )
 
 
 # ------------------------------------------------------------------- graph
@@ -126,6 +136,158 @@ class TestGuardrailOnAzure:
         verdict = guardrail.validate(zeynep, draft)
         assert not verdict.ok
         assert "new permissions" in " ".join(verdict.reasons)
+
+
+class TestAzureCategoryMismatch:
+    """P2: the guardrail must keep Azure's actions vs dataActions axes apart.
+
+    The deterministic proposer routes each used action back into the right
+    category by the finding's own ``data_plane`` flag; a custom (or a future
+    LLM) proposer that routes a dataAction into ``actions`` silently converts
+    a data-plane grant into a control-plane one — the merged statement
+    checks cannot see the difference. Key Vault and Cosmos DB (non-Blob
+    resource providers) pin that the check is category-based, not a
+    ``microsoft.storage/blob/`` prefix rule.
+    """
+
+    KV_CONTROL = "microsoft.keyvault/vaults/read"
+    KV_USED_DATA = "microsoft.keyvault/vaults/secrets/getsecret/action"
+    KV_UNUSED_DATA = "microsoft.keyvault/vaults/secrets/readmetadata/action"
+    COSMOS_USED_DATA = "microsoft.documentdb/databaseaccounts/readmetadata"
+    _ACTIONS = (KV_CONTROL, KV_USED_DATA, KV_UNUSED_DATA, COSMOS_USED_DATA)
+
+    def _registry(self) -> AzureActionRegistry:
+        return AzureActionRegistry(self._ACTIONS)
+
+    def _kv_finding(self) -> PrincipalFinding:
+        """Key Vault secret reader: uses one dataAction, holds an unused
+        dataAction + an unused control-plane read."""
+        return PrincipalFinding(
+            kind="user",
+            name="kv-user",
+            arn=None,
+            used_actions=[self.KV_USED_DATA],
+            granted_actions=[
+                GrantedAction(self.KV_CONTROL, ["role:kv-reader"], False, False, "Read"),
+                GrantedAction(self.KV_USED_DATA, ["role:kv-reader"], True, False, "Action", data_plane=True),
+                GrantedAction(self.KV_UNUSED_DATA, ["role:kv-reader"], False, False, "Read", data_plane=True),
+            ],
+            used_action_resources={},
+        )
+
+    def _cosmos_finding(self) -> PrincipalFinding:
+        """Cosmos DB SDK client: uses the data-plane readMetadata action."""
+        return PrincipalFinding(
+            kind="user",
+            name="cosmos-user",
+            arn=None,
+            used_actions=[self.COSMOS_USED_DATA],
+            granted_actions=[
+                GrantedAction(
+                    self.COSMOS_USED_DATA, ["role:cosmos-data-reader"], True, False, "Action", data_plane=True
+                ),
+            ],
+            used_action_resources={},
+        )
+
+    def test_correct_category_draft_passes(self):
+        guardrail = Guardrail(self._registry())
+        draft = {
+            "Name": "permtrim-kv",
+            "IsCustom": True,
+            "permissions": [{"dataActions": [self.KV_USED_DATA]}],
+        }
+        verdict = guardrail.validate(self._kv_finding(), draft)
+        assert verdict.ok, verdict.feedback
+
+    def test_data_action_written_to_actions_rejected(self):
+        """Key Vault dataAction routed into ``actions`` — the data-plane
+        permission would silently become a control-plane grant."""
+        guardrail = Guardrail(self._registry())
+        draft = {"permissions": [{"actions": [self.KV_USED_DATA]}]}
+        verdict = guardrail.validate(self._kv_finding(), draft)
+        assert not verdict.ok
+        assert "category mismatch" in " ".join(verdict.reasons)
+        assert "is a dataAction in the original role" in " ".join(verdict.reasons)
+
+    def test_cosmos_data_action_written_to_actions_rejected(self):
+        """Cosmos DB: same misroute, different resource provider — the check
+        cannot be blob-specific."""
+        guardrail = Guardrail(self._registry())
+        draft = {"permissions": [{"actions": [self.COSMOS_USED_DATA]}]}
+        verdict = guardrail.validate(self._cosmos_finding(), draft)
+        assert not verdict.ok
+        assert "category mismatch" in " ".join(verdict.reasons)
+        assert self.COSMOS_USED_DATA in " ".join(verdict.reasons)
+
+    def test_control_action_written_to_data_actions_rejected(self):
+        """The converse misroute: a control-plane action presented as a
+        dataAction widens the data axis instead."""
+        guardrail = Guardrail(self._registry())
+        finding = PrincipalFinding(
+            kind="user",
+            name="kv-admin",
+            arn=None,
+            used_actions=[self.KV_CONTROL],
+            granted_actions=[GrantedAction(self.KV_CONTROL, ["role:kv-admin"], False, False, "Read")],
+            used_action_resources={},
+        )
+        draft = {"permissions": [{"dataActions": [self.KV_CONTROL]}]}
+        verdict = guardrail.validate(finding, draft)
+        assert not verdict.ok
+        assert "is a control-plane action in the original role" in " ".join(verdict.reasons)
+
+    def test_dual_category_grant_accepts_either(self):
+        """An action granted on BOTH axes (control + data statements) may be
+        written to either category without tripping the check."""
+        guardrail = Guardrail(self._registry())
+        finding = PrincipalFinding(
+            kind="user",
+            name="dual",
+            arn=None,
+            used_actions=[self.KV_USED_DATA],
+            granted_actions=[
+                GrantedAction(self.KV_USED_DATA, ["role:a"], False, False, "Action"),
+                GrantedAction(self.KV_USED_DATA, ["role:b"], True, False, "Action"),
+            ],
+            used_action_resources={},
+        )
+        draft = {"permissions": [{"actions": [self.KV_USED_DATA]}]}
+        verdict = guardrail.validate(finding, draft)
+        assert verdict.ok, verdict.feedback
+
+    def test_tightener_feedback_loop_fixes_misroute(self):
+        """End to end: a scripted LLM misroutes first, the guardrail feedback
+        names the category problem, the corrected draft is accepted — the
+        tightened role keeps getSecret in dataActions."""
+        registry = self._registry()
+
+        class ScriptedLLM:
+            def __init__(self, drafts):
+                self.drafts = list(drafts)
+                self.name = "scripted"
+
+            def propose(self, finding, feedback=None):
+                return self.drafts.pop(0) if self.drafts else None
+
+        finding = self._kv_finding()
+        wrong = {"permissions": [{"actions": [self.KV_USED_DATA]}]}
+        right = {
+            "Name": "permtrim-kv",
+            "IsCustom": True,
+            "AssignableScopes": ["/subscriptions/00000000-1111-2222-3333-444444444444"],
+            "permissions": [{"dataActions": [self.KV_USED_DATA]}],
+        }
+        result = Tightener(
+            ScriptedLLM([wrong, right]),
+            registry,
+            config=TightenerConfig(allow_unknown_data_plane_usage=True),
+        ).tighten(_report_with(finding))
+        outcome = result.outcomes[0]
+        assert outcome.status == "needs_review", outcome.attempts
+        assert outcome.policy is right
+        assert outcome.policy["permissions"][0]["dataActions"] == [self.KV_USED_DATA]
+        assert "category mismatch" in " ".join(outcome.attempts)
 
 
 # ---------------------------------------------------------------- tightener
