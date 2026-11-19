@@ -58,6 +58,12 @@ class PrincipalOutcome:
     attempts: list[str] = field(default_factory=list)
     finding: PrincipalFinding | None = None
     policy: dict[str, Any] | None = None
+    # Why a ``manual_review`` outcome was produced: ``"conditional_grants"``
+    # (used actions came in under a Condition element) or
+    # ``"unknown_data_plane_usage"`` (grants on the data plane whose usage
+    # the activity source cannot see). Lets the CLI print the real reason
+    # instead of a generic Condition-only note. ``None`` for other statuses.
+    review_reason: str | None = None
 
     @property
     def label(self) -> str:
@@ -95,6 +101,7 @@ class TightenResult:
                     "principal": o.principal,
                     "status": o.status,
                     "proposer": o.proposer,
+                    "review_reason": o.review_reason,
                     "attempts": o.attempts,
                     "policy": o.policy,
                 }
@@ -181,18 +188,22 @@ class Tightener:
         principal = f"{finding.kind}:{finding.name}"
         outcome = PrincipalOutcome(principal=principal, status="failed", finding=finding)
 
-        if not finding.used_actions:
-            outcome.status = "idle"
-            outcome.proposer = "none"
-            outcome.attempts = ["no working usage in window — candidate for access review"]
-            return outcome
-
         # Original grants carrying Condition elements (MFA, VPC endpoint, ...)
         # must not be auto-replaced: permtrim cannot evaluate the condition,
         # and a replacement without it would widen effective access.
+        #
+        # This guard runs BEFORE the idle check on purpose. Consider a
+        # principal with a single conditional grant and no observed usage:
+        # `used_actions` is empty, so the idle branch would mark it idle and
+        # report "no working usage" — hiding the real reason (a Condition the
+        # human reviewer must inspect). The unknown-usage guard is ordered
+        # the same way: a principal with only invisible-to-lookup_events
+        # data-plane grants and no observed usage is "unknown usage", not
+        # "idle" — saying idle would mislead the reviewer.
         if finding.conditional_grants:
             outcome.status = "manual_review"
             outcome.proposer = "none"
+            outcome.review_reason = "conditional_grants"
             outcome.attempts = [
                 "used actions granted under a Condition element "
                 f"({', '.join(finding.conditional_grants[:5])}"
@@ -203,22 +214,32 @@ class Tightener:
             ]
             return outcome
 
-        # Data-plane grants with no observed usage: lookup_events cannot see
-        # data events, so "unused" there means "unknown", not "absent".
-        # Dropping them could break production; stop unless explicitly overridden.
+        # Data-plane grants with no observed usage: lookup_events / Activity
+        # Log cannot see data events, so "unused" there means "unknown", not
+        # "absent". Dropping them could break production; stop unless
+        # explicitly overridden. Runs before the idle check for the same
+        # reason as the conditional_grants guard above.
         if finding.unknown_usage_actions and not self._config.allow_unknown_data_plane_usage:
             outcome.status = "manual_review"
             outcome.proposer = "none"
+            outcome.review_reason = "unknown_data_plane_usage"
             sample = finding.unknown_usage_actions[:5]
             outcome.attempts = [
                 "unused-looking DATA-PLANE grants "
                 f"({', '.join(sample)}{' ...' if len(finding.unknown_usage_actions) > 5 else ''}): "
-                "cloudtrail lookup_events does not return data events, so their usage "
-                "is unknown, not confirmed absent — no policy generated; enable "
-                "CloudTrail Lake / S3 data-event ingestion or review manually "
+                "cloudtrail lookup_events / Azure Activity Log do not return data "
+                "events, so their usage is unknown, not confirmed absent — no policy "
+                "generated; enable CloudTrail Lake / S3 data-event ingestion or Azure "
+                "resource diagnostic settings, or review manually "
                 "(allow_unknown_data_plane_usage=True overrides when you know the "
                 "window is representative)"
             ]
+            return outcome
+
+        if not finding.used_actions:
+            outcome.status = "idle"
+            outcome.proposer = "none"
+            outcome.attempts = ["no working usage in window — candidate for access review"]
             return outcome
 
         # ---- primary proposer with retries
