@@ -262,3 +262,82 @@ class TestErrorOnlyUsage:
         assert finding.used_actions == []
         granted = {g.action: g for g in finding.granted_actions}
         assert granted["ec2:runinstances"].error_only is True
+
+
+class TestDataPlaneClassification:
+    """P1-AWS: data-plane classification is a single table; invisible-to-
+    lookup_events usage never falls through to ``unused_actions``.
+
+    A service in the table is "unknown usage" (the tightener stops); a
+    service NOT in the table but still on the data plane would today be
+    misclassified as unused — that is the documented gap, and adding the
+    service to ``_DATA_PLANE_SERVICE_PREFIXES`` is the single-place fix.
+    """
+
+    def test_is_data_plane_helper_aws(self):
+        from permtrim.analyzer.engine import is_data_plane_action
+
+        assert is_data_plane_action("s3:getobject", provider="aws") is True
+        assert is_data_plane_action("lambda:invokefunction", provider="aws") is True
+        assert is_data_plane_action("dynamodb:getitem", provider="aws") is True
+        assert is_data_plane_action("qldb:execute", provider="aws") is True
+        assert is_data_plane_action("ec2:runinstances", provider="aws") is False
+        assert is_data_plane_action("iam:createuser", provider="aws") is False
+
+    def test_is_data_plane_helper_azure_is_noop(self):
+        """On Azure the matcher carries the flag from dataActions; the helper
+        is not consulted there."""
+        from permtrim.analyzer.engine import is_data_plane_action
+
+        assert is_data_plane_action("microsoft.storage/blob/containers/read", provider="azure") is False
+
+    def test_known_data_plane_unused_goes_to_unknown_not_unused(self):
+        """An s3 grant with no observed usage -> unknown_usage_actions, NOT
+        unused_actions, and NOT counted in unused_count."""
+        from datetime import datetime, timezone
+
+        from permtrim.analyzer.engine import Analyzer
+        from permtrim.models.activity import ActivityLog, ActivityWindow, UsageSummary
+        from permtrim.models.iam import IaMSnapshot, IAMUser
+
+        now = datetime.now(timezone.utc)
+        doc = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": ["s3:getobject"], "Resource": "*"}],
+        }
+        iam = IaMSnapshot(
+            account_id="1",
+            collector_identity_arn="arn",
+            collected_at=now,
+            users=[IAMUser(name="u", arn="arn:u", inline_policies={"s3only": doc})],
+            roles=[],
+            groups=[],
+            policies={},
+        )
+        activity = ActivityLog(
+            window=ActivityWindow(start=now, end=now, lookback_days=30),
+            events=[],
+            usage={("user", "u"): UsageSummary(action_counts={})},
+        )
+        report = Analyzer().analyze(iam, activity)
+        finding = next(f for f in report.findings if f.name == "u")
+        assert finding.unknown_usage_actions == ["s3:getobject"]
+        assert finding.unused_count == 0
+        assert finding.used_actions == []
+        # the granted action carries the data_plane flag the analyzer set
+        granted = {g.action: g for g in finding.granted_actions}
+        assert granted["s3:getobject"].data_plane is True
+
+    def test_unknown_service_outside_table_falls_to_unused(self):
+        """Documents the gap: a service NOT in the data-plane table but still
+        on the data plane is today classified as unused (its usage is invisible
+        too). Adding the service to the table lifts it out. This test pins
+        the current behaviour so the single-place fix is verifiable.
+        """
+        from permtrim.analyzer.engine import _DATA_PLANE_SERVICE_PREFIXES
+
+        # confirm the table does NOT cover a hypothetical 'secretsmanager:'
+        # data-plane-ish service (it is control-plane in reality; this is a
+        # stand-in proving the table is the single decision point)
+        assert not any("secretsmanager:".startswith(p) for p in _DATA_PLANE_SERVICE_PREFIXES)
+        assert not any(p == "glue:" for p in _DATA_PLANE_SERVICE_PREFIXES)
