@@ -44,7 +44,8 @@ class Statement:
     actions: tuple[str, ...]  # lowercase patterns, empty when NotAction is used
     not_actions: tuple[str, ...]
     resources: tuple[str, ...]
-    source: str  # provenance label, e.g. "managed:AdministratorAccess@user/alice"
+    condition: bool = False  # True when the statement carries a Condition element
+    source: str = ""  # provenance label, e.g. "managed:AdministratorAccess@user/alice"
 
     def matches(self, action: str) -> bool:
         """Does this statement's Action/NotAction element cover ``action``?"""
@@ -125,6 +126,7 @@ class PolicySet:
                     actions=tuple(as_pattern_list(statement.get("Action"))),
                     not_actions=tuple(as_pattern_list(statement.get("NotAction"))),
                     resources=_as_resource_list(statement.get("Resource")),
+                    condition=bool(statement.get("Condition")),
                     source=source,
                 )
             )
@@ -157,6 +159,7 @@ class PolicySet:
                     actions=tuple(actions),
                     not_actions=tuple(not_actions),
                     resources=(),  # scope is on the role assignment, not the definition
+                    condition=False,  # Azure role definitions carry no Condition element
                     source=f"{source}#perm{index + 1}",
                 )
             )
