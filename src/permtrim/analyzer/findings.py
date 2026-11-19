@@ -56,6 +56,17 @@ class PrincipalFinding:
     # Resource scopes of the original statements that granted each used
     # action ("" when the snapshot carries no resource provenance, e.g. Azure).
     used_action_resources: dict[str, list[str]] = field(default_factory=dict)
+    # Actions whose original Allow statements carried a Condition element
+    # (e.g. MFA, source VPC endpoint). permtrim does not evaluate conditions;
+    # the tightener refuses to auto-generate replacements for them (the
+    # tightened policy would drop the condition and widen effective access).
+    conditional_grants: list[str] = field(default_factory=list)
+    # Unused-LOOKING grants on the AWS data plane (s3/lambda/dynamodb/qldb):
+    # ``lookup_events`` covers management events only, so their usage is not
+    # confirmed absent — merely invisible to this collector. Reported
+    # separately (never in ``unused_actions``) and the tightener stops for
+    # principals that have them.
+    unknown_usage_actions: list[str] = field(default_factory=list)
 
     @property
     def granted_count(self) -> int:
@@ -88,6 +99,8 @@ class PrincipalFinding:
             "is_idle": self.is_idle,
             "permission_boundary_arn": self.permission_boundary_arn,
             "used_action_resources": {k: list(v) for k, v in self.used_action_resources.items()},
+            "conditional_grants": list(self.conditional_grants),
+            "unknown_usage_actions": list(self.unknown_usage_actions),
         }
 
     def to_proposer_payload(self) -> dict[str, Any]:
@@ -96,6 +109,9 @@ class PrincipalFinding:
         The proposed policy must re-allow every action in ``used_actions``
         (that is the guardrail's coverage check); ``unused_examples`` and
         ``wildcard_sources`` give the model context about what to drop.
+        ``conditional_grants`` lists used actions whose original grants
+        carried a Condition — models must copy the original Condition
+        verbatim; permtrim itself does not evaluate conditions.
         """
         return {
             "kind": self.kind,
@@ -110,6 +126,7 @@ class PrincipalFinding:
                 if self.used_action_resources
                 else {}
             ),
+            **({"conditional_grants": list(self.conditional_grants)} if self.conditional_grants else {}),
         }
 
 
