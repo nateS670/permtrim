@@ -330,6 +330,15 @@ def _cmd_tighten(args: argparse.Namespace) -> int:
 
     proposer = _build_proposer(args, registry)
     if provider == "azure":
+        if args.proposer != "deterministic":
+            # Swapping the LLM proposer silently would surprise users who
+            # passed --proposer ollama and then wonder why no model was
+            # ever contacted — say it explicitly.
+            LOGGER.warning(
+                "Azure provider: LLM policy drafting is not supported yet — "
+                "using the deterministic proposer (--proposer %s is ignored)",
+                args.proposer,
+            )
         # custom roles need a real AssignableScopes value
         subscription = document.get("meta", {}).get("subscription_id") or document.get("meta", {}).get(
             "account_id", ""
@@ -371,6 +380,17 @@ def _cmd_tighten(args: argparse.Namespace) -> int:
                     "(lookup_events/Activity Log cover control-plane only); enable data-event "
                     "ingestion or --allow-unknown-data-plane-usage"
                 )
+                # Explicit uncertainty: some of those grants were protected by
+                # the conservative default, not by a documented data-event
+                # classification — reviewers should see exactly which.
+                finding = outcome.finding
+                if finding is not None and finding.unclassified_actions:
+                    sample = ", ".join(finding.unclassified_actions[:3])
+                    more = "..." if len(finding.unclassified_actions) > 3 else ""
+                    note += (
+                        f"; {len(finding.unclassified_actions)} could not be classified as "
+                        f"management vs data events and defaulted to data-plane ({sample}{more})"
+                    )
             elif outcome.review_reason == "conditional_grants":
                 note = " — original grants carry Condition elements (MFA/VPC/...); tighten manually"
             else:
@@ -379,8 +399,10 @@ def _cmd_tighten(args: argparse.Namespace) -> int:
 
     validated = result.validated
     if provider == "azure":
-        # Azure remediation: one custom-role JSON per principal + the
-        # az commands that install them and swap the assignments.
+        # Azure remediation: one custom-role JSON per principal + a script
+        # that creates the role DEFINITIONS. Switching assignments to the
+        # new definitions and retiring the old roles touches live access —
+        # deliberately left as manual review steps.
         az_parts: list[str] = []
         for outcome in validated:
             slug = outcome.principal.replace(":", "-").replace("@", "-").replace("/", "-")
@@ -393,10 +415,25 @@ def _cmd_tighten(args: argparse.Namespace) -> int:
         if az_parts:
             apply_path = output_dir / "apply_roles.sh"
             apply_path.write_text(
-                "#!/usr/bin/env bash\nset -euo pipefail\n\n" + "\n".join(az_parts) + "\n", encoding="utf-8"
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n\n"
+                "# Creates the least-privilege custom role DEFINITIONS via\n"
+                "# 'az role definition create'. This script intentionally does\n"
+                "# NOT assign the new roles and does NOT delete old ones: both\n"
+                "# touch live access and stay manual review steps. After a role\n"
+                "# is created, review it and then e.g.:\n"
+                "#   az role assignment create --assignee <principal-id> \\\n"
+                '#       --role "<role name from role_<principal>.json>" \\\n'
+                '#       --scope "<scope>"\n'
+                "#   az role assignment delete --assignee <principal-id> \\\n"
+                '#       --role "<old role name>" --scope "<scope>"\n\n' + "\n".join(az_parts) + "\n",
+                encoding="utf-8",
             )
             apply_path.chmod(0o755)
-            print(f"saved -> {len(az_parts)} role_*.json + apply_roles.sh (az role definition create)")
+            print(
+                f"saved -> {len(az_parts)} role_*.json + apply_roles.sh "
+                "(creates role definitions; assignment changes remain manual)"
+            )
     else:
         tf_parts: list[str] = []
         for outcome in validated:
