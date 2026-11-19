@@ -11,7 +11,12 @@ import json
 
 import pytest
 
-from azure_fixtures import (
+# The azure SDK is an optional extra (``pip install permtrim[azure]``);
+# skip the whole module instead of failing collection when it is absent
+# (e.g. an environment installed with only [graph,dev]).
+pytest.importorskip("azure.mgmt.authorization", reason="azure extra not installed")
+
+from azure_fixtures import (  # noqa: E402
     GUID_CONTRIBUTOR,
     ROLE_DEF_ID,
     SUBSCRIPTION_ID,
