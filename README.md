@@ -5,7 +5,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![CI](https://github.com/nateS670/permtrim/actions/workflows/ci.yml/badge.svg)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-128%20passed-brightgreen)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-160%20passed-brightgreen)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue)](http://mypy-lang.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
@@ -234,7 +234,7 @@ git clone https://github.com/nateS670/permtrim.git
 cd permtrim
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[graph,azure,dev]"
-pytest          # 128 tests — NO AWS ACCOUNT / LLM REQUIRED
+pytest          # 160 tests — NO AWS ACCOUNT / LLM REQUIRED
 ```
 
 AWS authentication uses the standard boto3 chain. The **read-only** IAM
@@ -342,8 +342,9 @@ session policies, or resource-based policies either).
 | CloudTrail `lookup_events` covers the **last 90 days** only | AWS API limit | S3 → Athena pipeline (backlog) |
 | At most **10,000 events**; `window.truncated=true` when cut off — and the tightener then **refuses to run** (`insufficient_data`) | AWS API limit | Same; `--allow-truncated-window` is the explicit override |
 | Event history is **regional** | AWS API limit | Sample per region; merge |
-| `lookup_events` returns **management events only** — data-plane calls (e.g. `s3:GetObject` on objects) are **never visible to permtrim**, even when a trail records data events (those go to S3 / CloudTrail Lake, a different pipeline) | AWS API design (LookupEvents does not search data events) | CloudTrail Lake / S3→Athena ingestion (backlog); until then unused-looking data-plane grants (s3/lambda/dynamodb/qldb) are reported as **unknown usage**, excluded from `unused_actions`, and the tightener **stops** for principals holding them (`--allow-unknown-data-plane-usage` overrides) |
-| The analyzer does **not** evaluate Resource/Condition (action-level audit view); resource scopes of the original grants are preserved where recorded and widening drafts are rejected, but unknown scope ⇒ `needs_review`, never silently `"*"` | Scoping decisions need resource-level usage data | `Resource` carried from original policies; simulator hook for full fidelity |
+| `lookup_events` returns **management events only** — data-plane calls (e.g. `s3:GetObject` on objects) are **never visible to permtrim**, even when a trail records data events (those go to S3 / CloudTrail Lake, a different pipeline) | AWS API design (LookupEvents does not search data events) | CloudTrail Lake / S3→Athena ingestion (backlog); until then unused-looking data-plane grants are reported as **unknown usage**, excluded from `unused_actions`, and the tightener **stops** for principals holding them (`--allow-unknown-data-plane-usage` overrides). The data-plane classification is a single table (`_DATA_PLANE_SERVICE_PREFIXES` in `engine.py`); adding a service there is the one-place change that lifts it out of "unused" — a missing service can no longer let a real data-plane grant be dropped |
+| Azure Activity Log records **control-plane** operations only; data-plane calls (Blob reads/writes, Key Vault `get`, Cosmos DB item ops, ...) live in each resource's diagnostic settings, a pipeline permtrim does not ingest | Azure API design (Activity Log is control-plane) | Resource diagnostic-settings ingestion (backlog); until then Azure data-plane grants are kept in a **separate statement** (the matcher splits `actions` vs `dataActions` and the engine carries `Statement.data_plane` end to end), reported as **unknown usage**, and the tightener **stops** — the deterministic proposer routes the *used* data-plane actions back into `dataActions` from the finding's own classification (not a hardcoded prefix), so a data-plane grant stays on the data plane for every resource provider |
+| The analyzer does **not** evaluate Resource/Condition (action-level audit view); resource scopes of the original grants are preserved where recorded and widening drafts are rejected, but unknown scope ⇒ `needs_review`, never silently `"*"` | Scoping decisions need resource-level usage data | `Resource` carried from original policies; simulator hook for full fidelity. AWS drafts must also carry a non-empty `Resource` element (the guardrail rejects a missing / empty / wrong-typed `Resource` so IAM's `"*"` default cannot widen the blast radius) |
 | Permission boundaries / SCPs / session policies / resource-based policies are **not** evaluated | Effective-permission evaluation is out of scope for v1 | Identity-based policies only (documented here); boundary ARNs surfaced in the report |
 | Azure: the action universe is built from the snapshot itself (role definitions + activity log), so `*` expansion is a lower bound, not the full Azure operation set; tightened Azure roles are therefore always `needs_review` | No offline Azure action dataset exists | Future: vendored Azure operations catalog |
 | Works without an LLM too | By design | The deterministic proposer is the reference implementation |
@@ -360,7 +361,7 @@ and JSON writing are handled by the base class.
 
 ```bash
 pip install -e ".[graph,azure,dev]"
-pytest                          # 128 tests: Stubber-based collector, analyzer,
+pytest                          # 160 tests: Stubber-based collector, analyzer,
                                 # guardrail (incl. a fake LLM that hallucinates), CLI
 pytest --cov=permtrim           # coverage report
 ruff check . && mypy            # lint + type checking
