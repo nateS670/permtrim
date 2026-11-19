@@ -44,7 +44,13 @@ def _prepare(document: dict) -> tuple[dict, AnalysisReport, TightenResult]:
         from permtrim.analyzer import load_default_registry
 
         registry = load_default_registry()
-        tightener = Tightener(DeterministicProposer(registry), registry, TightenerConfig())
+        # the bundled AWS sample grants AdministratorAccess (s3:* data-plane
+        # grants); the sample window is known representative -> opt in
+        tightener = Tightener(
+            DeterministicProposer(registry),
+            registry,
+            TightenerConfig(allow_unknown_data_plane_usage=True),
+        )
     return document, report, tightener.tighten(report)
 
 
