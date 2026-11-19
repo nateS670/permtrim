@@ -46,6 +46,11 @@ class Statement:
     resources: tuple[str, ...]
     condition: bool = False  # True when the statement carries a Condition element
     source: str = ""  # provenance label, e.g. "managed:AdministratorAccess@user/alice"
+    # True when the statement came from an Azure ``dataActions`` clause (or,
+    # on AWS, was classified by the analyzer as data-plane). Carried end to
+    # end so the engine can mark data-plane grants whose usage is invisible
+    # to lookup_events / Activity Log as ``unknown_usage_actions``.
+    data_plane: bool = False
 
     def matches(self, action: str) -> bool:
         """Does this statement's Action/NotAction element cover ``action``?"""
@@ -134,10 +139,15 @@ class PolicySet:
     def _add_azure_document(self, document: dict[str, Any], source: str) -> None:
         """Azure RBAC role definition: ``permissions`` entries, all Allow.
 
-        ``actions``/``dataActions`` are control/data-plane grants and merge
-        into one pattern list (the audit-log view is action-level and does
-        not distinguish planes); ``notActions``/``notDataActions`` merge into
-        the exclusion list.
+        ``actions`` and ``dataActions`` are KEPT as separate statements (not
+        merged): the ``data_plane`` flag on the data-plane statement lets the
+        analyzer classify those grants as ``unknown_usage_actions``, because
+        Azure Activity Log records control-plane operations only — data-plane
+        usage (Blob reads/writes, Key Vault gets, ...) lives in the resource's
+        diagnostic settings, a pipeline this collector does not ingest. Merging
+        them would lose the distinction and let a data-plane grant be dropped
+        as "unused" when it is merely invisible. ``notActions`` / ``notDataActions``
+        attach to their matching control / data-plane statement respectively.
         """
         permissions = document.get("permissions") or document.get("Permissions") or []
         if isinstance(permissions, dict):
@@ -145,24 +155,39 @@ class PolicySet:
         for index, permission in enumerate(permissions):
             if not isinstance(permission, dict):
                 continue
-            actions = as_pattern_list(permission.get("actions") or permission.get("Actions"))
-            actions += as_pattern_list(permission.get("dataActions") or permission.get("DataActions"))
-            not_actions = as_pattern_list(permission.get("notActions") or permission.get("NotActions"))
-            not_actions += as_pattern_list(
+            control_actions = as_pattern_list(permission.get("actions") or permission.get("Actions"))
+            data_actions = as_pattern_list(permission.get("dataActions") or permission.get("DataActions"))
+            control_not_actions = as_pattern_list(
+                permission.get("notActions") or permission.get("NotActions")
+            )
+            data_not_actions = as_pattern_list(
                 permission.get("notDataActions") or permission.get("NotDataActions")
             )
-            if not actions and not not_actions:
-                continue
-            self.statements.append(
-                Statement(
-                    effect="allow",
-                    actions=tuple(actions),
-                    not_actions=tuple(not_actions),
-                    resources=(),  # scope is on the role assignment, not the definition
-                    condition=False,  # Azure role definitions carry no Condition element
-                    source=f"{source}#perm{index + 1}",
+            perm_label = f"{source}#perm{index + 1}"
+            if control_actions or control_not_actions:
+                self.statements.append(
+                    Statement(
+                        effect="allow",
+                        actions=tuple(control_actions),
+                        not_actions=tuple(control_not_actions),
+                        resources=(),  # scope is on the role assignment, not the definition
+                        condition=False,  # Azure role definitions carry no Condition element
+                        source=perm_label,
+                        data_plane=False,
+                    )
                 )
-            )
+            if data_actions or data_not_actions:
+                self.statements.append(
+                    Statement(
+                        effect="allow",
+                        actions=tuple(data_actions),
+                        not_actions=tuple(data_not_actions),
+                        resources=(),
+                        condition=False,
+                        source=perm_label + "#dataActions",
+                        data_plane=True,
+                    )
+                )
 
     @property
     def allow_statements(self) -> list[Statement]:
