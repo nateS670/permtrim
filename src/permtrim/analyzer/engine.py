@@ -44,18 +44,41 @@ LOGGER = logging.getLogger(__name__)
 
 _WILDCARD_EXAMPLES_LIMIT = 5
 
-# AWS services whose actions operate on the DATA plane: ``lookup_events``
-# (the collector's only activity source) searches management events only,
-# so unused-looking grants in these services may simply be INVISIBLE usage
-# rather than true excess (AWS docs: Event History shows no data events).
-# The analyzer never marks them unused; the tightener conservatively stops.
-# CloudTrail Lake / S3+Athena ingestion (planned) will lift this.
-_DATA_PLANE_SERVICE_PREFIXES = (
-    "s3:",
-    "lambda:",
-    "dynamodb:",
-    "qldb:",
+# Classification of which AWS service prefixes operate on the DATA plane.
+# ``lookup_events`` (the collector's only activity source on AWS) searches
+# management events only, so unused-looking grants in these services may
+# simply be INVISIBLE usage rather than true excess (AWS docs: Event History
+# shows no data events). The analyzer never marks them unused; the tightener
+# conservatively stops. CloudTrail Lake / S3+Athena ingestion (planned)
+# will lift this.
+#
+# This is a CLASSIFICATION table, not a denial list: ``is_data_plane_action``
+# is the single decision point, and the tightener stops for any principal
+# whose data-plane grants have no observed usage. Adding a service here is
+# a deliberate, single-place change — the days of a missing service letting
+# a real data-plane grant be dropped as "unused" are over.
+_DATA_PLANE_SERVICE_PREFIXES: frozenset[str] = frozenset(
+    {
+        "s3:",
+        "lambda:",
+        "dynamodb:",
+        "qldb:",
+    }
 )
+
+
+def is_data_plane_action(action: str, *, provider: str = "aws") -> bool:
+    """Is ``action`` on the data plane (invisible to the activity source)?
+
+    AWS: classified from the service prefix (the IAM policy document does
+    not mark control vs data plane explicitly). Azure: the matcher already
+    carried the distinction via ``Statement.data_plane`` from ``dataActions``,
+    so this helper is only consulted on AWS.
+    """
+    if provider == "azure":
+        return False  # Azure: handled via ``Statement.data_plane``
+    return any(action.startswith(prefix) for prefix in _DATA_PLANE_SERVICE_PREFIXES)
+
 
 # Access-level risk weights for the risk score.
 _ACCESS_LEVEL_RISK = {
@@ -298,6 +321,12 @@ class Analyzer:
             return
         if statement.condition:
             scan.conditional.add(action)
+        # The data-plane flag is OR-ed across every granting statement: an
+        # action granted by BOTH a control-plane and a data-plane statement
+        # is treated as data-plane (the conservative choice — its usage may
+        # be invisible to the activity source). On AWS the statement is
+        # never tagged by the matcher, so the analyzer classifies it here.
+        is_data_plane = statement.data_plane or is_data_plane_action(action, provider=self._provider)
         granted = scan.granted.get(action)
         if granted is None:
             granted = GrantedAction(
@@ -306,8 +335,11 @@ class Analyzer:
                 used=False,
                 error_only=False,
                 access_level=registry.access_level(action),
+                data_plane=is_data_plane,
             )
             scan.granted[action] = granted
+        elif is_data_plane:
+            granted.data_plane = True
         if statement.source not in granted.sources:
             granted.sources.append(statement.source)
         if statement.resources:
@@ -336,13 +368,17 @@ class Analyzer:
         # used actions whose grants carried Condition elements: surfaced in
         # the report and payload; the tightener refuses to auto-replace them
         finding.conditional_grants = sorted(scan.conditional & used)
-        # unused-looking data-plane grants: usage on the data plane is
-        # INVISIBLE to lookup_events (management events only), so these are
-        # "unknown usage", not confirmed excess — never classified unused
+        # unused-looking DATA-plane grants: usage on the data plane is
+        # INVISIBLE to lookup_events / Activity Log (management/control-plane
+        # events only), so these are "unknown usage", not confirmed excess —
+        # never classified unused. The data-plane flag is set on the grant
+        # itself (AWS: classified by ``is_data_plane_action`` from the service
+        # prefix; Azure: carried from ``dataActions`` by the matcher), so this
+        # one path covers both providers.
         finding.unknown_usage_actions = sorted(
             action
             for action, granted in scan.granted.items()
-            if not granted.used and not granted.error_only and action.startswith(_DATA_PLANE_SERVICE_PREFIXES)
+            if not granted.used and not granted.error_only and granted.data_plane
         )
         self._collect_wildcards(finding, scan.wildcard_patterns, used)
 
