@@ -225,9 +225,21 @@ class DeterministicProposer:
         ]
 
     def _azure_role(self, finding: PrincipalFinding, actions: list[str]) -> dict[str, Any]:
-        """Custom role definition JSON for one principal's observed actions."""
-        control_plane = [a for a in actions if not a.startswith("microsoft.storage/blob/")]
-        data_plane = [a for a in actions if a.startswith("microsoft.storage/blob/")]
+        """Custom role definition JSON for one principal's observed actions.
+
+        The control/data-plane split is taken from the finding itself
+        (``PrincipalFinding.used_data_plane_actions``), which the analyzer
+        derived from the ``dataActions`` clause the original role used. The
+        earlier ``microsoft.storage/blob/`` prefix hardcode was wrong for any
+        other data-plane resource provider (Key Vault data actions, Cosmos DB
+        item operations, ...): those would have landed in ``actions`` and the
+        tightened role would have re-granted them on the control plane. Using
+        the finding's own classification means a data-plane grant stays a
+        data-plane grant regardless of the resource provider.
+        """
+        data_plane_set = set(finding.used_data_plane_actions)
+        control_plane = [a for a in actions if a not in data_plane_set]
+        data_plane = [a for a in actions if a in data_plane_set]
         permissions: dict[str, list[str]] = {}
         if control_plane:
             permissions["actions"] = control_plane
