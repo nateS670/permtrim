@@ -361,7 +361,20 @@ def _cmd_tighten(args: argparse.Namespace) -> int:
         if outcome.status == "insufficient_data":
             note = " — re-run collect with a narrower window, or --allow-truncated-window"
         elif outcome.status == "manual_review":
-            note = " — original grants carry Condition elements (MFA/VPC/...); tighten manually"
+            # The tightener now records the real reason a manual_review was
+            # produced (conditional_grants vs unknown_data_plane_usage) — show
+            # it instead of a generic Condition-only note, so the reviewer
+            # knows which path to investigate.
+            if outcome.review_reason == "unknown_data_plane_usage":
+                note = (
+                    " — holds data-plane grants whose usage the activity source cannot see "
+                    "(lookup_events/Activity Log cover control-plane only); enable data-event "
+                    "ingestion or --allow-unknown-data-plane-usage"
+                )
+            elif outcome.review_reason == "conditional_grants":
+                note = " — original grants carry Condition elements (MFA/VPC/...); tighten manually"
+            else:
+                note = " — review manually"
         print(f"  {outcome.principal:<28} {outcome.label}{note}")
 
     validated = result.validated
