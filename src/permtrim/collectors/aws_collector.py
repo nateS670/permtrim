@@ -21,11 +21,18 @@ Operational limits of ``lookup_events`` (constraints of the AWS API itself)
   Longer windows require a CloudTrail → S3 → Athena pipeline (planned seam:
   :meth:`_fetch_lookup_events`).
 * At most **10,000 events** are returned → the result is marked
-  ``window.truncated = true`` when the cap is hit.
+  ``window.truncated = true`` when the cap is hit. NOTE: ``truncated=false``
+  only means the event-count cap was not hit — it is NOT a completeness
+  guarantee (see the data-events point below).
 * Event history is **regional** → one collector instance queries one region;
   instantiate per region and merge for multi-region coverage.
-* Data-plane events (``s3:GetObject`` ...) only appear if a trail records
-  **data events** for that resource type.
+* ``lookup_events`` searches **management events only**. Data-plane actions
+  (``s3:GetObject``, Lambda invokes, DynamoDB item ops, QLDB) are NEVER
+  returned by this API — not even when a trail records data events (those go
+  to S3 / CloudTrail Lake, a different pipeline). The analyzer therefore
+  treats unused-looking data-plane grants as *unknown usage* rather than
+  confirmed excess, and the tightener stops for principals holding them
+  (see ``PrincipalFinding.unknown_usage_actions``).
 * Events lag ~15 minutes behind → a safety buffer is subtracted from ``end``.
 
 Required IAM permissions (read-only)
