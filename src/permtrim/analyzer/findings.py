@@ -37,11 +37,12 @@ class GrantedAction:
     access_level: str | None  # Read/Write/... from the dataset
     # Was the action granted by a DATA-plane clause rather than a control-plane
     # one? On AWS the distinction is not explicit in the policy document, so
-    # the analyzer classifies it from the service (see
-    # ``_DATA_PLANE_SERVICE_PREFIXES``); on Azure the matcher carries the
-    # distinction from ``dataActions`` verbatim. Data-plane grants are the
-    # ones whose usage ``lookup_events`` / Activity Log cannot see, so they
-    # drive the ``unknown_usage_actions`` classification.
+    # the analyzer classifies it per action (see ``classify_aws_data_plane``
+    # in engine.py; unclassifiable actions default to data-plane); on Azure
+    # the matcher carries the distinction from ``dataActions`` verbatim.
+    # Data-plane grants are the ones whose usage ``lookup_events`` / Activity
+    # Log cannot see, so they drive the ``unknown_usage_actions`` and
+    # ``unclassified_actions`` reporting.
     data_plane: bool = False
 
 
@@ -69,12 +70,21 @@ class PrincipalFinding:
     # the tightener refuses to auto-generate replacements for them (the
     # tightened policy would drop the condition and widen effective access).
     conditional_grants: list[str] = field(default_factory=list)
-    # Unused-LOOKING grants on the AWS data plane (s3/lambda/dynamodb/qldb):
-    # ``lookup_events`` covers management events only, so their usage is not
-    # confirmed absent — merely invisible to this collector. Reported
-    # separately (never in ``unused_actions``) and the tightener stops for
-    # principals that have them.
+    # Unused-LOOKING grants whose usage the activity source cannot see
+    # (AWS data events, Azure dataActions): ``lookup_events`` covers
+    # management/control-plane events only, so their usage is not confirmed
+    # absent — merely invisible to this collector. Reported separately
+    # (never in ``unused_actions``) and the tightener stops for principals
+    # that have them.
     unknown_usage_actions: list[str] = field(default_factory=list)
+    # The subset of ``unknown_usage_actions`` protected by the CONSERVATIVE
+    # DEFAULT rather than a documented data-event classification: AWS actions
+    # the classification table could not place (new/obscure actions of a
+    # service that mixes data and management events). Surfaced explicitly so
+    # a reviewer can tell "this is invisible by documentation" from "the
+    # table did not know this action" — and so a stale table is visible
+    # instead of silently widening the review set.
+    unclassified_actions: list[str] = field(default_factory=list)
 
     @property
     def granted_count(self) -> int:
@@ -109,6 +119,7 @@ class PrincipalFinding:
             "used_action_resources": {k: list(v) for k, v in self.used_action_resources.items()},
             "conditional_grants": list(self.conditional_grants),
             "unknown_usage_actions": list(self.unknown_usage_actions),
+            "unclassified_actions": list(self.unclassified_actions),
         }
 
     def to_proposer_payload(self) -> dict[str, Any]:
