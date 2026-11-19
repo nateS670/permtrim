@@ -128,6 +128,13 @@ def build_parser() -> argparse.ArgumentParser:
         "(default: refuse — incomplete usage data can break production).",
     )
     tighten.add_argument(
+        "--allow-unknown-data-plane-usage",
+        action="store_true",
+        help="Tighten even when the principal holds unused-looking data-plane grants "
+        "(s3/lambda/dynamodb/qldb): lookup_events cannot see data events, so their usage "
+        "is unknown (default: refuse and request manual review).",
+    )
+    tighten.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -336,6 +343,7 @@ def _cmd_tighten(args: argparse.Namespace) -> int:
         config=TightenerConfig(
             max_attempts=args.max_attempts,
             allow_truncated_window=getattr(args, "allow_truncated_window", False),
+            allow_unknown_data_plane_usage=getattr(args, "allow_unknown_data_plane_usage", False),
         ),
     )
     result = tightener.tighten(report)
@@ -352,6 +360,8 @@ def _cmd_tighten(args: argparse.Namespace) -> int:
         note = ""
         if outcome.status == "insufficient_data":
             note = " — re-run collect with a narrower window, or --allow-truncated-window"
+        elif outcome.status == "manual_review":
+            note = " — original grants carry Condition elements (MFA/VPC/...); tighten manually"
         print(f"  {outcome.principal:<28} {outcome.label}{note}")
 
     validated = result.validated
