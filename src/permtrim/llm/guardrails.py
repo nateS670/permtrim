@@ -216,6 +216,15 @@ class Guardrail:
         outright (coverage is checked over Allows, but a real explicit Deny
         overrides every Allow — see the module docstring, check 8). Azure
         drafts have no Deny concept to begin with.
+
+        AWS drafts must also carry a ``Resource`` element on every Allow
+        statement: a missing / empty / wrong-typed Resource would let the
+        tightener's ``_outcome_status`` treat the draft as if it allowed
+        ``"*"`` (the IAM evaluation default), silently widening the blast
+        radius of every action in the statement. We refuse it outright so the
+        gap cannot become a "verified" policy. (Azure drafts use the
+        ``permissions`` shape and have no Resource element — handled in
+        ``_azure_statements``.)
         """
         raw = draft.get("Statement")
         if isinstance(raw, dict):
@@ -250,6 +259,46 @@ class Guardrail:
                     "would silently override them in real IAM evaluation"
                 )
                 continue
+            resource = statement.get("Resource")
+            # Resource must be present, non-empty, and a string or list of
+            # strings. ``None`` / ``[]`` / ``""`` / numbers / dicts would all
+            # fall back to ``"*"`` in IAM and widen scope — refuse them so a
+            # draft cannot slip through as a "verified" widening.
+            #
+            # NotResource is a separate, earlier failure handled by
+            # ``_check_negation_free`` (a negation on the resource axis): if
+            # the draft uses NotResource we still record the missing-Resource
+            # reason (IAM defaults it to "*"), but we must NOT ``continue``
+            # here, or the negation check never runs and the draft is
+            # rejected with only half the explanation. So: when NotResource is
+            # present, defer to the negation check and let the statement
+            # through structure validation (the negation check will reject it).
+            has_not_resource = statement.get("NotResource") is not None
+            if not has_not_resource:
+                if resource is None:
+                    reasons.append(
+                        f"{label} has no Resource element — AWS IAM defaults a missing "
+                        "Resource to '*', widening the scope of every action in the "
+                        "statement; tightened policies must state the Resource explicitly"
+                    )
+                    continue
+                if isinstance(resource, str):
+                    if not resource.strip():
+                        reasons.append(f"{label} has an empty Resource string")
+                        continue
+                elif isinstance(resource, list):
+                    if not resource:
+                        reasons.append(f"{label} has an empty Resource list")
+                        continue
+                    if any(not isinstance(item, str) or not str(item).strip() for item in resource):
+                        reasons.append(f"{label} has a Resource list with non-string or empty entries")
+                        continue
+                else:
+                    reasons.append(
+                        f"{label} has a Resource of type {type(resource).__name__} — "
+                        "expected a string or list of strings"
+                    )
+                    continue
             allows.append(statement)
         return allows
 
