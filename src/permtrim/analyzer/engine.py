@@ -44,40 +44,707 @@ LOGGER = logging.getLogger(__name__)
 
 _WILDCARD_EXAMPLES_LIMIT = 5
 
-# Classification of which AWS service prefixes operate on the DATA plane.
-# ``lookup_events`` (the collector's only activity source on AWS) searches
-# management events only, so unused-looking grants in these services may
-# simply be INVISIBLE usage rather than true excess (AWS docs: Event History
-# shows no data events). The analyzer never marks them unused; the tightener
-# conservatively stops. CloudTrail Lake / S3+Athena ingestion (planned)
-# will lift this.
+# ---------------------------------------------------------------------------
+# AWS data-plane classification (ACTION level — not service prefixes)
+# ---------------------------------------------------------------------------
+# CloudTrail records two event categories that matter here:
+#
+#   management events — control-plane APIs. Returned by ``lookup_events`` (the
+#       collector's only activity source on AWS).
+#   data events      — resource-level APIs (object reads/writes, queue
+#       message send/receive, item-level DynamoDB access, Lambda invokes,
+#       ...). NOT searchable via ``lookup_events``.
+#
+# So for a DATA-event action, absence of observed usage does NOT prove
+# non-use: the analyzer must treat such grants as "unknown usage" instead of
+# unused. For a MANAGEMENT-event action, ``lookup_events`` visibility makes
+# absence of usage real evidence of non-use — they are analyzed (and can be
+# removed) like any other unused grant. A blanket per-SERVICE rule cannot
+# express this: S3 mixes object-level data events (GetObject) with bucket
+# management events (CreateBucket), SNS mixes Publish with CreateTopic, etc.
+#
+# Classification is therefore three-valued and ACTION-level:
+#
+#   "data"         — documented CloudTrail data event
+#   "management"   — documented management event
+#   "unclassified" — lives in a service that mixes both categories but is in
+#       neither list (new/obscure actions). Conservative default: treated
+#       like a data event (unknown usage, never silently removed) AND
+#       surfaced on ``PrincipalFinding.unclassified_actions`` so reviewers
+#       can see exactly which actions the table could not classify.
 #
 # This is a CLASSIFICATION table, not a denial list: ``is_data_plane_action``
 # is the single decision point, and the tightener stops for any principal
-# whose data-plane grants have no observed usage. Adding a service here is
-# a deliberate, single-place change — the days of a missing service letting
-# a real data-plane grant be dropped as "unused" are over.
-_DATA_PLANE_SERVICE_PREFIXES: frozenset[str] = frozenset(
+# whose data-plane grants have no observed usage. Adding entries here reduces
+# review noise; an OUTDATED table errs on the safe side (unclassified grants
+# default to data-plane), never to silent removal. CloudTrail Lake / S3
+# data-event ingestion (planned) will lift the whole limitation.
+#
+# Transcribed (2026-11) from:
+#   - CloudTrail User Guide, "Logging data events" (resource-type table)
+#   - S3 User Guide, "Logging Amazon S3 API calls using AWS CloudTrail"
+#     (per-resource-type Data APIs + the bucket-level management list)
+#   - DynamoDB Developer Guide, "Logging DynamoDB API calls using CloudTrail"
+#   - SQS / SNS Developer Guides, "Logging ... API calls using AWS CloudTrail"
+#   - Lambda Developer Guide, "Logging Lambda API calls using CloudTrail"
+#   - S3 Tables / S3 Vectors User Guides, "... information in CloudTrail"
+# QLDB is deliberately ABSENT: it has no CloudTrail data events (all qldb:*
+# calls are management events, visible to lookup_events).
+_DATA = "data"
+_MANAGEMENT = "management"
+_UNCLASSIFIED = "unclassified"
+
+# Services that contribute CloudTrail data events (from the resource-type
+# table). Actions of every OTHER service are management events by definition.
+_AWS_DATA_EVENT_SERVICES: frozenset[str] = frozenset(
     {
-        "s3:",
-        "lambda:",
-        "dynamodb:",
-        "qldb:",
+        "s3",
+        "s3express",
+        "s3-object-lambda",
+        "s3tables",
+        "s3vectors",
+        "lambda",
+        "dynamodb",
+        "sns",
+        "sqs",
+        "ebs",
     }
 )
 
+# Services where EVERY action outside ``_AWS_DATA_EVENT_ACTIONS`` is a
+# management event (the service documents a closed data-event set):
+# Lambda logs only Invoke-family calls as data events and everything else as
+# management events; the EBS direct APIs are all snapshot-block operations.
+_AWS_MANAGEMENT_BY_DEFAULT_SERVICES: frozenset[str] = frozenset({"lambda", "ebs"})
+
+_EMPTY: frozenset[str] = frozenset()
+
+# Data-event actions per service, as IAM action names (lowercase). Entries
+# that are CloudTrail event names rather than IAM actions (ListObjectsV2,
+# UploadPart, ...) are harmless: they simply never match a policy action.
+_AWS_DATA_EVENT_ACTIONS: dict[str, frozenset[str]] = {
+    # S3 object-level operations (AWS::S3::Object) + the Object Lambda and
+    # Access Point variants, mapped onto IAM action names. Note ListBucket:
+    # the underlying APIs (ListObjects / ListObjectsV2 / ListObjectVersions /
+    # ListParts / HeadBucket) ARE data events. Versioned object operations
+    # are included (object plane); s3:CreateBucket and friends are NOT here.
+    "s3": frozenset(
+        {
+            "abortmultipartupload",
+            "bypassgovernanceretention",  # only exercised via data-event calls
+            "completemultipartupload",
+            "copyobject",
+            "createmultipartupload",
+            "deleteobject",
+            "deleteobjecttagging",
+            "deleteobjectversion",
+            "deleteobjectversiontagging",
+            "deleteobjects",
+            "getobject",
+            "getobjectacl",
+            "getobjectannotation",
+            "getobjectattributes",
+            "getobjectlegalhold",
+            "getobjectretention",
+            "getobjecttagging",
+            "getobjecttorrent",
+            "getobjectversion",
+            "getobjectversionacl",
+            "getobjectversionattributes",
+            "getobjectversionforreplication",
+            "getobjectversiontagging",
+            "getobjectversiontorrent",
+            "headbucket",  # doc note: supported as an S3 data event
+            "headobject",
+            "initiatereplication",  # batch replication data movement
+            "listbucket",  # ListObjects / ListObjectsV2 / HeadBucket APIs
+            "listbucketversions",  # ListObjectVersions API
+            "listmultipartuploadparts",  # ListParts API
+            "listobjectversions",
+            "listobjects",
+            "listobjectsv2",
+            "listparts",
+            "objectowneroverridetobucketowner",
+            "pausereplication",
+            "putobject",
+            "putobjectacl",
+            "putobjectannotation",
+            "putobjectlegalhold",
+            "putobjectretention",
+            "putobjecttagging",
+            "putobjectversionacl",
+            "putobjectversiontagging",
+            "replicatedelete",
+            "replicateobject",
+            "replicatetags",
+            "restoreobject",
+            "selectobjectcontent",
+            "updateobjectencryption",
+            "uploadpart",
+            "uploadpartcopy",
+        }
+    ),
+    # Directory buckets: object APIs are session-gated; CreateSession IS the
+    # data-plane entry point (listed under AWS::S3Express::Object data APIs).
+    "s3express": frozenset({"createsession"}),
+    # Calls THROUGH an Object Lambda access point (AWS::S3ObjectLambda::
+    # AccessPoint data APIs). Versioned ops are not offered by OLAPs — they
+    # stay unclassified (conservative) rather than guessed.
+    "s3-object-lambda": frozenset(
+        {
+            "abortmultipartupload",
+            "deleteobject",
+            "deleteobjecttagging",
+            "getobject",
+            "getobjectacl",
+            "getobjectlegalhold",
+            "getobjectretention",
+            "getobjecttagging",
+            "listbucket",
+            "listbucketmultipartuploads",
+            "listbucketversions",
+            "listmultipartuploadparts",
+            "putobject",
+            "putobjectacl",
+            "putobjectlegalhold",
+            "putobjectretention",
+            "putobjecttagging",
+            "restoreobject",
+            "writegetobjectresponse",
+        }
+    ),
+    # S3 Tables: the Iceberg catalog data path (AWS::S3Tables::Table);
+    # metadata-location and all config/policy ops are management events.
+    "s3tables": frozenset({"gettabledata", "puttabledata"}),
+    # S3 Vectors: vector-data APIs on an index (AWS::S3Vectors::Index);
+    # bucket/index config and policy ops are management events.
+    "s3vectors": frozenset({"deletevectors", "getvectors", "listvectors", "putvectors", "queryvectors"}),
+    # Lambda execution plane. The docs table lists only Invoke; the other
+    # invoke variants are the same execution plane and stay on the safe side.
+    "lambda": frozenset(
+        {
+            "invokeasync",
+            "invokefunction",
+            "invokefunctionurl",
+            "invokewithresponsestream",
+        }
+    ),
+    # DynamoDB item-level APIs (AWS::DynamoDB::Table) + Streams
+    # (AWS::DynamoDB::Stream). ConditionCheckItem and the legacy PartiQL
+    # single-statement actions are not in the docs table but are item-level
+    # activity — kept on the safe side. Replication data movement likewise.
+    "dynamodb": frozenset(
+        {
+            "batchexecutestatement",
+            "batchgetitem",
+            "batchwriteitem",
+            "conditioncheckitem",
+            "deleteitem",
+            "executestatement",
+            "executetransaction",
+            "getitem",
+            "getrecords",
+            "getsharditerator",
+            "partiqldelete",
+            "partiqlinsert",
+            "partiqlselect",
+            "partiqlupdate",
+            "putitem",
+            "query",
+            "readdataforreplication",
+            "scan",
+            "searchvectors",
+            "transactgetitems",
+            "transactwriteitems",
+            "updateitem",
+            "writedataforreplication",
+        }
+    ),
+    "sns": frozenset({"publish", "publishbatch"}),
+    # SQS message activity (AWS::SQS::Queue data APIs).
+    "sqs": frozenset(
+        {
+            "changemessagevisibility",
+            "changemessagevisibilitybatch",
+            "deletemessage",
+            "deletemessagebatch",
+            "getqueueattributes",
+            "getqueueurl",
+            "listdeadlettersourcequeues",
+            "listqueues",
+            "listqueuetags",
+            "receivemessage",
+            "sendmessage",
+            "sendmessagebatch",
+        }
+    ),
+    # EBS direct APIs (AWS::EC2::Snapshot) — the whole service is
+    # snapshot-block data operations.
+    "ebs": frozenset(
+        {
+            "completesnapshot",
+            "getsnapshotblock",
+            "listchangedblocks",
+            "listsnapshotblocks",
+            "putsnapshotblock",
+            "startsnapshot",
+        }
+    ),
+}
+
+# KNOWN management-event actions for the services that ALSO have data events
+# (from the same docs, control-plane lists). Actions of these services that
+# are in neither table classify as "unclassified" (conservative data-plane).
+_AWS_MANAGEMENT_EVENT_ACTIONS: dict[str, frozenset[str]] = {
+    "s3": frozenset(
+        {
+            # bucket-level operations (official CloudTrail management list)
+            "createbucket",
+            "createbucketmetadataconfiguration",
+            "createbucketmetadatatableconfiguration",
+            "deletebucket",
+            "deletebucketanalyticsconfiguration",
+            "deletebucketcors",
+            "deletebucketencryption",
+            "deletebucketintelligenttieringconfiguration",
+            "deletebucketinventoryconfiguration",
+            "deletebucketlifecycle",
+            "deletebucketmetadataconfiguration",
+            "deletebucketmetadatatableconfiguration",
+            "deletebucketmetricsconfiguration",
+            "deletebucketownershipcontrols",
+            "deletebucketpolicy",
+            "deletebucketpublicaccessblock",
+            "deletebucketreplication",
+            "deletebuckettagging",
+            "getaccelerateconfiguration",
+            "getbucketacl",
+            "getbucketanalyticsconfiguration",
+            "getbucketcors",
+            "getbucketencryption",
+            "getbucketintelligenttieringconfiguration",
+            "getbucketinventoryconfiguration",
+            "getbucketlifecycle",
+            "getbucketlocation",
+            "getbucketlogging",
+            "getbucketmetadataconfiguration",
+            "getbucketmetadatatableconfiguration",
+            "getbucketmetricsconfiguration",
+            "getbucketnotification",
+            "getbucketobjectlockconfiguration",
+            "getbucketownershipcontrols",
+            "getbucketpolicy",
+            "getbucketpolicystatus",
+            "getbucketpublicaccessblock",
+            "getbucketreplication",
+            "getbucketrequestpayment",
+            "getbuckettagging",
+            "getbucketversioning",
+            "getbucketwebsite",
+            "listallmybuckets",  # ListBuckets API
+            "listbuckets",
+            "putaccelerateconfiguration",
+            "putbucketacl",
+            "putbucketanalyticsconfiguration",
+            "putbucketcors",
+            "putbucketencryption",
+            "putbucketintelligenttieringconfiguration",
+            "putbucketinventoryconfiguration",
+            "putbucketlifecycle",
+            "putbucketlogging",
+            "putbucketmetricsconfiguration",
+            "putbucketnotification",
+            "putbucketobjectlockconfiguration",
+            "putbucketownershipcontrols",
+            "putbucketpolicy",
+            "putbucketpublicaccessblock",
+            "putbucketreplication",
+            "putbucketrequestpayment",
+            "putbuckettagging",
+            "putbucketversioning",
+            "putbucketwebsite",
+            "updatebucketmetadataannotationtableconfiguration",
+            "updatebucketmetadatainventorytableconfiguration",
+            "updatebucketmetadatajournaltableconfiguration",
+            # access point / Object Lambda access point configuration
+            "createaccesspoint",
+            "createaccesspointforobjectlambda",
+            "deleteaccesspoint",
+            "deleteaccesspointforobjectlambda",
+            "deleteaccesspointpolicy",
+            "deleteaccesspointpolicyforobjectlambda",
+            "getaccesspoint",
+            "getaccesspointpolicy",
+            "getaccesspointpolicyforobjectlambda",
+            "getaccesspointpolicystatus",
+            "getaccesspointpolicystatusforobjectlambda",
+            "listaccesspoints",
+            "listaccesspointsforobjectlambda",
+            "putaccesspointpolicy",
+            "putaccesspointpolicyforobjectlambda",
+            # access grants configuration (GetDataAccess stays unclassified —
+            # not documented as a data event in the sources above)
+            "associateaccessgrantsidentitycenter",
+            "createaccessgrant",
+            "createaccessgrantsinstance",
+            "createaccessgrantslocation",
+            "deleteaccessgrant",
+            "deleteaccessgrantsinstance",
+            "deleteaccessgrantsinstanceresourcepolicy",
+            "deleteaccessgrantslocation",
+            "dissociateaccessgrantsidentitycenter",
+            "getaccessgrant",
+            "getaccessgrantsinstance",
+            "getaccessgrantsinstanceforprefix",
+            "getaccessgrantsinstanceidentitycenterconfiguration",
+            "getaccessgrantsinstanceresourcepolicy",
+            "getaccessgrantslocation",
+            "listaccessgrants",
+            "listaccessgrantsinstances",
+            "listaccessgrantslocations",
+            "listaccessgrantsresourceregistrations",
+            "listcalleraccessgrants",
+            "putaccessgrantsinstanceresourcepolicy",
+            "updateaccessgrantslocation",
+            # multi-region access points
+            "createmultiregionaccesspoint",
+            "deletemultiregionaccesspoint",
+            "describemultiregionaccesspointoperation",
+            "getmultiregionaccesspoint",
+            "getmultiregionaccesspointpolicy",
+            "getmultiregionaccesspointpolicystatus",
+            "getmultiregionaccesspointroutes",
+            "listmultiregionaccesspoints",
+            "putmultiregionaccesspointpolicy",
+            "submitmultiregionaccesspointroutes",
+            # Storage Lens / batch jobs / account-level config
+            "createstoragelensconfiguration",
+            "createstoragelensgroup",
+            "deletestoragelensconfiguration",
+            "deletestoragelensconfigurationtagging",
+            "deletestoragelensgroup",
+            "getstoragelensconfiguration",
+            "getstoragelensconfigurationtagging",
+            "getstoragelensdashboard",
+            "getstoragelensgroup",
+            "listbucketmultipartuploads",  # ListMultipartUploads API (bucket-level)
+            "liststoragelensconfigurations",
+            "liststoragelensgroups",
+            "putstoragelensconfiguration",
+            "putstoragelensconfigurationtagging",
+            "putstoragelensgroup",
+            "updatestoragelensgroup",
+            "createjob",
+            "deletejobtagging",
+            "describejob",
+            "getjobtagging",
+            "listjobs",
+            "putjobtagging",
+            "updatejobpriority",
+            "updatejobstatus",
+            "deleteaccountpublicaccessblock",
+            "getaccountpublicaccessblock",
+            "putaccountpublicaccessblock",
+            "deletebucketwebsite",
+            "getaccesspointconfigurationforobjectlambda",
+            "getaccesspointforobjectlambda",
+            "getanalyticsconfiguration",
+            "getbucketabac",
+            # getdataaccess (the access-grants credential exchange) is NOT in
+            # either table — it classifies as "unclassified" and defaults to
+            # the conservative data-plane side.
+            "getencryptionconfiguration",
+            "getintelligenttieringconfiguration",
+            "getinventoryconfiguration",
+            "getlifecycleconfiguration",
+            "getmetricsconfiguration",
+            "getreplicationconfiguration",
+            "putaccesspointconfigurationforobjectlambda",
+            "putaccesspointpublicaccessblock",
+            "putanalyticsconfiguration",
+            "putbucketabac",
+            "putencryptionconfiguration",
+            "putintelligenttieringconfiguration",
+            "putinventoryconfiguration",
+            "putlifecycleconfiguration",
+            "putmetricsconfiguration",
+            "putreplicationconfiguration",
+            "listtagsforresource",
+            "tagresource",
+            "untagresource",
+        }
+    ),
+    "s3express": frozenset(
+        {
+            "createaccesspoint",
+            "createbucket",
+            "deleteaccesspoint",
+            "deleteaccesspointpolicy",
+            "deleteaccesspointscope",
+            "deletebucket",
+            "deletebucketpolicy",
+            "getaccesspoint",
+            "getaccesspointpolicy",
+            "getaccesspointscope",
+            "getbucketpolicy",
+            "getencryptionconfiguration",
+            "getlifecycleconfiguration",
+            "listaccesspointsfordirectorybuckets",
+            "listallmydirectorybuckets",
+            "listtagsforresource",
+            "putaccesspointpolicy",
+            "putaccesspointscope",
+            "putbucketpolicy",
+            "putencryptionconfiguration",
+            "putlifecycleconfiguration",
+            "tagresource",
+            "untagresource",
+        }
+    ),
+    # Object Lambda access point configuration lives under the s3 service in
+    # IAM; nothing else in this service is control-plane.
+    "s3-object-lambda": _EMPTY,
+    "s3tables": frozenset(
+        {
+            "createnamespace",
+            "createtable",
+            "createtablebucket",
+            "deletenamespace",
+            "deletetable",
+            "deletetablebucket",
+            "deletetablebucketencryption",
+            "deletetablebucketmetricsconfiguration",
+            "deletetablebucketpolicy",
+            "deletetablebucketreplication",
+            "deletetablepolicy",
+            "deletetablereplication",
+            "getnamespace",
+            "gettable",
+            "gettablebucket",
+            "gettablebucketencryption",
+            "gettablebucketmaintenanceconfiguration",
+            "gettablebucketmetricsconfiguration",
+            "gettablebucketpolicy",
+            "gettablebucketreplication",
+            "gettablebucketstorageclass",
+            "gettableencryption",
+            "gettablemaintenanceconfiguration",
+            "gettablemaintenancejobstatus",
+            "gettablemetadatalocation",
+            "gettablepolicy",
+            "gettablerecordexpirationconfiguration",
+            "gettablerecordexpirationjobstatus",
+            "gettablereplication",
+            "gettablereplicationstatus",
+            "gettablestorageclass",
+            "listnamespaces",
+            "listtablebuckets",
+            "listtables",
+            "listtagsforresource",
+            "puttablebucketencryption",
+            "puttablebucketmaintenanceconfiguration",
+            "puttablebucketmetricsconfiguration",
+            "puttablebucketpolicy",
+            "puttablebucketreplication",
+            "puttablebucketstorageclass",
+            "puttableencryption",
+            "puttablemaintenanceconfiguration",
+            "puttablepolicy",
+            "puttablerecordexpirationconfiguration",
+            "puttablereplication",
+            "puttablestorageclass",
+            "renametable",
+            "tagresource",
+            "untagresource",
+            "updatetablemetadatalocation",
+        }
+    ),
+    "s3vectors": frozenset(
+        {
+            "createindex",
+            "createvectorbucket",
+            "deleteindex",
+            "deletevectorbucket",
+            "deletevectorbucketpolicy",
+            "getindex",
+            "getvectorbucket",
+            "getvectorbucketpolicy",
+            "listindexes",
+            "listtagsforresource",
+            "listvectorbuckets",
+            "putvectorbucketpolicy",
+            "tagresource",
+            "untagresource",
+        }
+    ),
+    "dynamodb": frozenset(
+        {
+            "associatetablereplica",
+            "createbackup",
+            "createglobaltable",
+            "createglobaltablewitness",
+            "createtable",
+            "createtablereplica",
+            "deletebackup",
+            "deleteglobaltablewitness",
+            "deleteresourcepolicy",
+            "deletetable",
+            "deletetablereplica",
+            "describebackup",
+            "describecontinuousbackups",
+            "describecontributorinsights",
+            "describeendpoints",
+            "describeexport",
+            "describeglobaltable",
+            "describeglobaltablesettings",
+            "describeimport",
+            "describekinesisstreamingdestination",
+            "describelimits",
+            "describereservedcapacity",
+            "describereservedcapacityofferings",
+            "describescalabletargets",
+            "describestream",
+            "describetable",
+            "describetablereplicaautoscaling",
+            "describetimetolive",
+            "disablekinesisstreamingdestination",
+            "enablekinesisstreamingdestination",
+            "exporttabletopointintime",
+            "getabacstatus",
+            "getresourcepolicy",
+            "importtable",
+            "injecterror",
+            "listbackups",
+            "listcontributorinsights",
+            "listexports",
+            "listglobaltables",
+            "listimports",
+            "liststreams",
+            "listtables",
+            "listtagsofresource",
+            "putresourcepolicy",
+            "purchasereservedcapacityofferings",
+            "registerscalabletarget",
+            "replicatesettings",
+            "restoretablefromawsbackup",
+            "restoretablefrombackup",
+            "restoretabletopointintime",
+            "startawsbackupjob",
+            "tagresource",
+            "untagresource",
+            "updateabacstatus",
+            "updatecontinuousbackups",
+            "updatecontributorinsights",
+            "updateglobaltable",
+            "updateglobaltablesettings",
+            "updateglobaltableversion",
+            "updatekinesisstreamingdestination",
+            "updatetable",
+            "updatetablereplicaautoscaling",
+            "updatetimetolive",
+        }
+    ),
+    "sns": frozenset(
+        {
+            "addpermission",
+            "checkifphonenumberisoptedout",
+            "confirmsubscription",
+            "createplatformapplication",
+            "createplatformendpoint",
+            "createsmssandboxphonenumber",
+            "createtopic",
+            "deleteendpoint",
+            "deleteplatformapplication",
+            "deletesmssandboxphonenumber",
+            "deletetopic",
+            "getdataprotectionpolicy",
+            "getendpointattributes",
+            "getplatformapplicationattributes",
+            "getsmsattributes",
+            "getsmssandboxaccountstatus",
+            "getsubscriptionattributes",
+            "gettopicattributes",
+            "listendpointsbyplatformapplication",
+            "listoriginationnumbers",
+            "listphonenumberoptedout",
+            "listphonenumbersoptedout",  # registry spelling of the same API
+            "listplatformapplications",
+            "listsmssandboxphonenumbers",
+            "listsubscriptions",
+            "listsubscriptionsbytopic",
+            "listtagsforresource",
+            "listtopics",
+            "optinphonenumber",
+            "putdataprotectionpolicy",
+            "removepermission",
+            "setendpointattributes",
+            "setplatformapplicationattributes",
+            "setsmsattributes",
+            "setsubscriptionattributes",
+            "settopicattributes",
+            "subscribe",
+            "tagresource",
+            "unsubscribe",
+            "untagresource",
+            "verifysmssandboxphonenumber",
+        }
+    ),
+    "sqs": frozenset(
+        {
+            "addpermission",
+            "cancelmessagemovetask",
+            "createqueue",
+            "deletequeue",
+            "listmessagemovetasks",
+            "purgequeue",
+            "setqueueattributes",
+            "startmessagemovetask",
+            "tagqueue",
+            "untagqueue",
+        }
+    ),
+}
+
+
+def classify_aws_data_plane(action: str) -> str:
+    """Three-way classification of an AWS action (see the block above).
+
+    Returns ``"data"`` (documented CloudTrail data event), ``"management"``
+    (documented management event, visible to lookup_events) or
+    ``"unclassified"`` (action of a mixed service missing from both tables;
+    callers must default it to the safe side).
+    """
+    service, sep, name = action.strip().lower().partition(":")
+    if not sep or not name:
+        return _UNCLASSIFIED
+    if service not in _AWS_DATA_EVENT_SERVICES:
+        return _MANAGEMENT  # service contributes no data events at all
+    if name in _AWS_DATA_EVENT_ACTIONS.get(service, _EMPTY):
+        return _DATA
+    if service in _AWS_MANAGEMENT_BY_DEFAULT_SERVICES:
+        return _MANAGEMENT  # closed data-event set; everything else is mgmt
+    if name in _AWS_MANAGEMENT_EVENT_ACTIONS.get(service, _EMPTY):
+        return _MANAGEMENT
+    return _UNCLASSIFIED
+
+
+def is_unclassified_aws_action(action: str) -> bool:
+    """Could not be classified as management vs data event?"""
+    return classify_aws_data_plane(action) == _UNCLASSIFIED
+
 
 def is_data_plane_action(action: str, *, provider: str = "aws") -> bool:
-    """Is ``action`` on the data plane (invisible to the activity source)?
+    """Is ``action`` possibly invisible to the activity source?
 
-    AWS: classified from the service prefix (the IAM policy document does
-    not mark control vs data plane explicitly). Azure: the matcher already
-    carried the distinction via ``Statement.data_plane`` from ``dataActions``,
-    so this helper is only consulted on AWS.
+    AWS: True for documented data events AND for unclassified actions (the
+    conservative default — an unclassifiable grant must never be droppable
+    as "unused"). Azure: the matcher already carries the distinction via
+    ``Statement.data_plane`` from ``dataActions``, so this helper is only
+    consulted on AWS.
     """
     if provider == "azure":
         return False  # Azure: handled via ``Statement.data_plane``
-    return any(action.startswith(prefix) for prefix in _DATA_PLANE_SERVICE_PREFIXES)
+    return classify_aws_data_plane(action) != _MANAGEMENT
 
 
 # Access-level risk weights for the risk score.
@@ -117,6 +784,9 @@ class _PrincipalScan:
         self.resources: dict[str, set[str]] = {}
         # actions granted by statements carrying a Condition element
         self.conditional: set[str] = set()
+        # AWS actions the classifier could not place (see the classification
+        # block) — defaulted to data-plane and surfaced on the finding
+        self.unclassified: set[str] = set()
         # unused-looking grants on the data plane (lookup_events cannot see
         # data events; the usage may exist but be invisible to us)
         self.unknown_usage: set[str] = set()
@@ -325,8 +995,16 @@ class Analyzer:
         # action granted by BOTH a control-plane and a data-plane statement
         # is treated as data-plane (the conservative choice — its usage may
         # be invisible to the activity source). On AWS the statement is
-        # never tagged by the matcher, so the analyzer classifies it here.
-        is_data_plane = statement.data_plane or is_data_plane_action(action, provider=self._provider)
+        # never tagged by the matcher, so the analyzer classifies the action
+        # itself; an unclassifiable AWS action defaults to data-plane (the
+        # safe side) and is recorded for the reviewer.
+        if self._provider == "azure":
+            is_data_plane = statement.data_plane
+        else:
+            classification = classify_aws_data_plane(action)
+            is_data_plane = statement.data_plane or classification != _MANAGEMENT
+            if classification == _UNCLASSIFIED:
+                scan.unclassified.add(action)
         granted = scan.granted.get(action)
         if granted is None:
             granted = GrantedAction(
@@ -372,13 +1050,23 @@ class Analyzer:
         # INVISIBLE to lookup_events / Activity Log (management/control-plane
         # events only), so these are "unknown usage", not confirmed excess —
         # never classified unused. The data-plane flag is set on the grant
-        # itself (AWS: classified by ``is_data_plane_action`` from the service
-        # prefix; Azure: carried from ``dataActions`` by the matcher), so this
-        # one path covers both providers.
+        # itself (AWS: classified per action by ``classify_aws_data_plane``
+        # with unclassifiable actions defaulted to data-plane; Azure: carried
+        # from ``dataActions`` by the matcher), so this one path covers both
+        # providers.
         finding.unknown_usage_actions = sorted(
             action
             for action, granted in scan.granted.items()
             if not granted.used and not granted.error_only and granted.data_plane
+        )
+        # the subset of the above the classification table could not place:
+        # explicitly surfaced (CLI note / JSON report) so reviewers can see
+        # which grants were protected by the conservative default rather
+        # than by a documented data-event classification
+        finding.unclassified_actions = sorted(
+            action
+            for action, granted in scan.granted.items()
+            if action in scan.unclassified and not granted.used and not granted.error_only
         )
         self._collect_wildcards(finding, scan.wildcard_patterns, used)
 
