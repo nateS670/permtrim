@@ -125,6 +125,7 @@ class Guardrail:
         reasons: list[str] = []
         if draft.get("permissions") is not None:
             statements = self._azure_statements(draft, reasons)
+            self._check_azure_categories(finding, draft, reasons)
         else:
             statements = self._check_structure(draft, reasons)
         if not statements:
@@ -182,6 +183,69 @@ class Guardrail:
                 continue
             statements.append({"Effect": "Allow", "Action": actions})
         return statements
+
+    def _check_azure_categories(
+        self, finding: PrincipalFinding, draft: dict[str, Any], reasons: list[str]
+    ) -> None:
+        """The draft must keep Azure's actions vs dataActions split intact.
+
+        Azure role definitions carry two distinct permission axes: management
+        operations in ``actions`` and data-plane operations in
+        ``dataActions``. Routing a dataAction into ``actions`` (or the other
+        way round) changes what the permission actually grants — merging both
+        lists for the statement checks below would hide the difference, so
+        this check compares every literal draft entry against the ORIGINAL
+        grant categories from the analyzer (``GrantedAction.data_plane``). An
+        entry that only exists as a dataAction in the original role but was
+        written to ``actions`` is rejected, and vice versa. Wildcard entries
+        are left to the no-new-permissions check (which limits their
+        expansion to the granted union); the deterministic proposer writes
+        exact strings only, so the happy path never trips here.
+        """
+        control = {g.action for g in finding.granted_actions if not g.data_plane}
+        data = {g.action for g in finding.granted_actions if g.data_plane}
+        if not control and not data:
+            return
+        permissions = draft.get("permissions")
+        if isinstance(permissions, dict):
+            permissions = [permissions]
+        if not isinstance(permissions, list):
+            return
+        misplaced: list[str] = []
+        for index, permission in enumerate(permissions):
+            if not isinstance(permission, dict):
+                continue
+            label = f"permission #{index + 1}"
+            for entry in permission.get("actions") or []:
+                action = str(entry).strip().lower()
+                if not action or "*" in action or "?" in action:
+                    continue
+                if action not in control and action in data:
+                    misplaced.append(
+                        f"{label}: '{entry}' is a dataAction in the original role "
+                        "but was written to 'actions'"
+                    )
+            for entry in permission.get("dataActions") or []:
+                action = str(entry).strip().lower()
+                if not action or "*" in action or "?" in action:
+                    continue
+                if action not in data and action in control:
+                    misplaced.append(
+                        f"{label}: '{entry}' is a control-plane action in the "
+                        "original role but was written to 'dataActions'"
+                    )
+        if misplaced:
+            sample = misplaced[:_NEW_PERMISSION_SAMPLE]
+            reasons.append(
+                "category mismatch — Azure dataActions must stay in dataActions "
+                "and control-plane actions in actions: "
+                + "; ".join(sample)
+                + (
+                    f" (+{len(misplaced) - _NEW_PERMISSION_SAMPLE} more)"
+                    if len(misplaced) > _NEW_PERMISSION_SAMPLE
+                    else ""
+                )
+            )
 
     # ------------------------------------------------------------- checks
 
