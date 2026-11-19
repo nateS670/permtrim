@@ -6,6 +6,7 @@ import copy
 import json
 import urllib.parse
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import boto3
 import pytest
@@ -344,41 +345,42 @@ def stubbed_cloudtrail():
 
 # ------------------------------------------------------------------ Azure (Task 5)
 # Mock SDK fixtures: real azure-mgmt model instances, zero accounts.
-
-from azure_fixtures import (  # noqa: E402
-    GUID_ZEYNEP,
-    FakeAuthorizationClient,
-    FakeMonitorClient,
-    StaticPrincipalResolverMapping,
-)
-from azure_fixtures import (  # noqa: E402 - appended Azure section
-    SUBSCRIPTION_ID as AZURE_SUBSCRIPTION_ID,
-)
-from permtrim.collectors.azure_collector import (  # noqa: E402
-    AzureCollector,
-    AzureCollectorConfig,
-)
+#
+# Imported lazily inside the fixtures: the Azure SDK is an optional extra
+# (``pip install permtrim[azure]``), and the Neo4j integration job installs
+# only ``[graph,dev]`` — a module-level import here would break collection
+# of every test file, including the ones that never touch Azure.
 
 
 @pytest.fixture
-def azure_config() -> AzureCollectorConfig:
+def azure_config() -> Any:
     """Config with a frozen clock, pointed at the mock subscription."""
     from azure_fixtures import FIXED_NOW as AZURE_FIXED_NOW
+    from azure_fixtures import SUBSCRIPTION_ID
+    from permtrim.collectors.azure_collector import AzureCollectorConfig
 
     return AzureCollectorConfig(
-        subscription_id=AZURE_SUBSCRIPTION_ID,
+        subscription_id=SUBSCRIPTION_ID,
         clock=lambda: AZURE_FIXED_NOW,
         default_lookback_days=30,
     )
 
 
 @pytest.fixture
-def azure_collector(azure_config: AzureCollectorConfig) -> AzureCollector:
+def azure_collector(azure_config: Any) -> Any:
     """Collector with mock SDK clients + static principal resolver wired in.
 
     zeynep is a transitive member of platform-team — the Azure analogue of
     alice's devs-group membership in the AWS fixtures.
     """
+    from azure_fixtures import (
+        GUID_ZEYNEP,
+        FakeAuthorizationClient,
+        FakeMonitorClient,
+        StaticPrincipalResolverMapping,
+    )
+    from permtrim.collectors.azure_collector import AzureCollector
+
     return AzureCollector(
         azure_config,
         authorization_client=FakeAuthorizationClient(),
