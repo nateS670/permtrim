@@ -583,6 +583,162 @@ class TestUnknownDataPlaneUsageGuard:
         assert result.outcomes[0].status == "verified"
 
 
+class TestIdleVsUnknownOrdering:
+    """P2: unknown-usage and conditional-grants guards run BEFORE the idle guard.
+
+    A principal with only invisible-to-lookup_events data-plane grants and no
+    observed usage is "unknown usage" (manual_review), not "idle" — the
+    reviewer needs to know the real reason. Likewise a principal whose only
+    grant carried a Condition and was never observed is "conditional_grants",
+    not "idle".
+    """
+
+    def test_data_plane_only_no_usage_is_manual_review_not_idle(self, registry):
+        finding = PrincipalFinding(
+            kind="user",
+            name="hank",
+            arn=None,
+            used_actions=[],  # no observed usage at all
+            granted_actions=[GrantedAction("s3:getobject", ["m"], False, False, "Read", data_plane=True)],
+            used_action_resources={},
+            unknown_usage_actions=["s3:getobject"],
+        )
+        llm = ScriptedLLM([])
+        result = Tightener(llm, registry).tighten(_report_with(finding))
+        outcome = result.outcomes[0]
+        assert outcome.status == "manual_review"
+        assert outcome.review_reason == "unknown_data_plane_usage"
+        assert outcome.policy is None
+        # the generic idle note must NOT appear; the data-plane reason must
+        assert "no working usage" not in " ".join(outcome.attempts)
+        assert "data events" in " ".join(outcome.attempts) or "DATA-PLANE" in " ".join(outcome.attempts)
+
+    def test_conditional_only_no_usage_is_manual_review_not_idle(self, registry):
+        finding = PrincipalFinding(
+            kind="user",
+            name="iris",
+            arn=None,
+            used_actions=[],  # no observed usage at all
+            granted_actions=[GrantedAction("s3:getobject", ["m"], False, False, "Read")],
+            used_action_resources={},
+            conditional_grants=["s3:getobject"],
+            unknown_usage_actions=[],
+        )
+        llm = ScriptedLLM([])
+        result = Tightener(llm, registry).tighten(_report_with(finding))
+        outcome = result.outcomes[0]
+        assert outcome.status == "manual_review"
+        assert outcome.review_reason == "conditional_grants"
+        assert outcome.policy is None
+        assert "no working usage" not in " ".join(outcome.attempts)
+        assert "Condition" in " ".join(outcome.attempts)
+
+    def test_no_usage_no_unknown_no_conditional_is_idle(self, registry):
+        """The idle branch still fires when there is genuinely nothing to flag."""
+        finding = PrincipalFinding(
+            kind="user",
+            name="jane",
+            arn=None,
+            used_actions=[],
+            granted_actions=[GrantedAction("ec2:describeinstances", ["m"], False, False, "Read")],
+            used_action_resources={},
+            conditional_grants=[],
+            unknown_usage_actions=[],
+        )
+        llm = ScriptedLLM([])
+        result = Tightener(llm, registry).tighten(_report_with(finding))
+        outcome = result.outcomes[0]
+        assert outcome.status == "idle"
+        assert outcome.review_reason is None
+
+
+class TestResourceElementRequired:
+    """P2: AWS drafts must carry a non-empty Resource on every Allow statement.
+
+    A missing / empty / wrong-typed Resource would let IAM default it to "*",
+    widening the blast radius. The guardrail rejects it so a draft cannot
+    slip through as a "verified" widening. (NotResource is handled by the
+    negation check and still rejected with its own reason.)
+    """
+
+    def _finding(self) -> PrincipalFinding:
+        return make_finding()
+
+    def test_missing_resource_rejected(self, registry):
+        finding = self._finding()
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"]}],  # no Resource key
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert any("no Resource element" in r for r in verdict.reasons)
+
+    def test_empty_string_resource_rejected(self, registry):
+        finding = self._finding()
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": ""}],
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert any("empty Resource string" in r for r in verdict.reasons)
+
+    def test_empty_list_resource_rejected(self, registry):
+        finding = self._finding()
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": []}],
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert any("empty Resource list" in r for r in verdict.reasons)
+
+    def test_wrong_type_resource_rejected(self, registry):
+        finding = self._finding()
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": {"arn": "x"}}],
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert any("Resource of type" in r for r in verdict.reasons)
+
+    def test_list_with_non_string_entry_rejected(self, registry):
+        finding = self._finding()
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": ["arn:aws:s3:::ok", 42]}
+            ],
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert any("non-string or empty entries" in r for r in verdict.reasons)
+
+    def test_valid_resource_still_accepted(self, registry):
+        finding = self._finding()
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "*"}],
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert verdict.ok, verdict.reasons
+
+    def test_notresource_still_rejected_with_its_own_reason(self, registry):
+        """A NotResource draft is rejected for negation, not just missing Resource."""
+        finding = self._finding()
+        draft = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {"Effect": "Allow", "Action": ["s3:GetObject"], "NotResource": ["arn:aws:s3:::secret/*"]}
+            ],
+        }
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert any("NotResource" in r for r in verdict.reasons)
+
+
 class TestResourceScopeProvenance:
     """Resource scopes flow from the finding into the tightened policy."""
 
@@ -641,6 +797,66 @@ class TestProposers:
         finding = make_finding()
         draft = DeterministicProposer(registry).propose(finding)
         assert draft["Statement"][0]["Action"] == ["s3:GetObject"]
+
+    def test_azure_role_routes_data_plane_from_finding_classification(self, registry):
+        """P1-Azure: the data-plane split comes from the finding, not a prefix.
+
+        A used action the analyzer tagged ``data_plane=True`` (here, a Key
+        Vault data-plane action ``microsoft.keyvault/vaults/secrets/getSecret``
+        — NOT under ``microsoft.storage/blob/``) must land in ``dataActions``,
+        and a control-plane used action in ``actions``. The old hardcoded
+        ``microsoft.storage/blob/`` prefix would have put the Key Vault action
+        in ``actions``, re-granting a data-plane permission on the control
+        plane.
+        """
+        finding = PrincipalFinding(
+            kind="role",
+            name="kv-reader@contoso.com",
+            arn=None,
+            provider="azure",
+            used_actions=[
+                "microsoft.storage/storageaccounts/read",
+                "microsoft.keyvault/vaults/secrets/getsecret",
+            ],
+            granted_actions=[
+                GrantedAction(
+                    "microsoft.storage/storageaccounts/read", ["m"], True, False, "Read", data_plane=False
+                ),
+                GrantedAction(
+                    "microsoft.keyvault/vaults/secrets/getsecret", ["m"], True, False, "Read", data_plane=True
+                ),
+            ],
+            used_action_resources={},
+            unknown_usage_actions=[],
+        )
+        proposer = DeterministicProposer(registry, azure_subscription="sub-1")
+        draft = proposer.propose(finding)
+        permissions = draft["permissions"][0]
+        assert permissions["actions"] == ["microsoft.storage/storageaccounts/read"]
+        # Key Vault data-plane action routed to dataActions from the finding's
+        # own data_plane flag, not from a microsoft.storage/blob/ prefix match.
+        assert permissions["dataActions"] == ["microsoft.keyvault/vaults/secrets/getsecret"]
+
+    def test_azure_role_no_data_actions_when_no_used_data_plane(self, registry):
+        """A finding with only control-plane used actions has no dataActions key."""
+        finding = PrincipalFinding(
+            kind="role",
+            name="vm-user@contoso.com",
+            arn=None,
+            provider="azure",
+            used_actions=["microsoft.compute/virtualmachines/read"],
+            granted_actions=[
+                GrantedAction(
+                    "microsoft.compute/virtualmachines/read", ["m"], True, False, "Read", data_plane=False
+                )
+            ],
+            used_action_resources={},
+            unknown_usage_actions=[],
+        )
+        proposer = DeterministicProposer(registry, azure_subscription="sub-1")
+        draft = proposer.propose(finding)
+        permissions = draft["permissions"][0]
+        assert permissions == {"actions": ["microsoft.compute/virtualmachines/read"]}
 
     def test_json_extraction_from_noisy_model_output(self):
         assert _extract_json_object('{"a": 1}') == {"a": 1}
