@@ -651,6 +651,49 @@ class TestIdleVsUnknownOrdering:
         assert outcome.status == "idle"
         assert outcome.review_reason is None
 
+    def test_unused_sns_publish_stops_tightener(self, registry):
+        """P1-AWS: sns:Publish is a CloudTrail DATA event (invisible to
+        lookup_events) — an unused-looking grant of it must stop the
+        tightener exactly like the s3 case, not fall through to idle."""
+        finding = PrincipalFinding(
+            kind="user",
+            name="hal",
+            arn=None,
+            used_actions=[],
+            granted_actions=[GrantedAction("sns:publish", ["m"], False, False, "Write", data_plane=True)],
+            used_action_resources={},
+            conditional_grants=[],
+            unknown_usage_actions=["sns:publish"],
+        )
+        llm = ScriptedLLM([])
+        result = Tightener(llm, registry).tighten(_report_with(finding))
+        outcome = result.outcomes[0]
+        assert outcome.status == "manual_review"
+        assert outcome.review_reason == "unknown_data_plane_usage"
+        assert "sns:publish" in " ".join(outcome.attempts)
+        assert outcome.policy is None
+
+    def test_unused_management_action_does_not_stop_tightener(self, registry):
+        """P1-AWS over-inclusion fix: s3:CreateBucket is a management event —
+        lookup_events WOULD have seen its usage — so an unused grant of it is
+        confirmed excess and does not trigger the unknown-usage guard (the
+        principal is just idle / removable, not manual-review noise)."""
+        finding = PrincipalFinding(
+            kind="user",
+            name="kai",
+            arn=None,
+            used_actions=[],
+            granted_actions=[GrantedAction("s3:createbucket", ["m"], False, False, "Write")],
+            used_action_resources={},
+            conditional_grants=[],
+            unknown_usage_actions=[],  # the analyzer did NOT flag it
+        )
+        llm = ScriptedLLM([])
+        result = Tightener(llm, registry).tighten(_report_with(finding))
+        outcome = result.outcomes[0]
+        assert outcome.status == "idle"
+        assert outcome.review_reason is None
+
 
 class TestResourceElementRequired:
     """P2: AWS drafts must carry a non-empty Resource on every Allow statement.
