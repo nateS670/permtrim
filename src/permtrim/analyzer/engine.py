@@ -44,6 +44,19 @@ LOGGER = logging.getLogger(__name__)
 
 _WILDCARD_EXAMPLES_LIMIT = 5
 
+# AWS services whose actions operate on the DATA plane: ``lookup_events``
+# (the collector's only activity source) searches management events only,
+# so unused-looking grants in these services may simply be INVISIBLE usage
+# rather than true excess (AWS docs: Event History shows no data events).
+# The analyzer never marks them unused; the tightener conservatively stops.
+# CloudTrail Lake / S3+Athena ingestion (planned) will lift this.
+_DATA_PLANE_SERVICE_PREFIXES = (
+    "s3:",
+    "lambda:",
+    "dynamodb:",
+    "qldb:",
+)
+
 # Access-level risk weights for the risk score.
 _ACCESS_LEVEL_RISK = {
     "permissions management": 3.0,
@@ -79,6 +92,11 @@ class _PrincipalScan:
         self.wildcard_patterns: dict[str, set[str]] = {}  # pattern -> granting sources
         # resource scopes per granted action, unioned across statements
         self.resources: dict[str, set[str]] = {}
+        # actions granted by statements carrying a Condition element
+        self.conditional: set[str] = set()
+        # unused-looking grants on the data plane (lookup_events cannot see
+        # data events; the usage may exist but be invisible to us)
+        self.unknown_usage: set[str] = set()
 
 
 class Analyzer:
@@ -278,6 +296,8 @@ class Analyzer:
         # for AWS statements this guard is a no-op).
         if not statement.matches(action):
             return
+        if statement.condition:
+            scan.conditional.add(action)
         granted = scan.granted.get(action)
         if granted is None:
             granted = GrantedAction(
@@ -313,6 +333,17 @@ class Analyzer:
             for action, scopes in scan.resources.items()
             if granted_map.get(action) is not None and granted_map[action].used
         }
+        # used actions whose grants carried Condition elements: surfaced in
+        # the report and payload; the tightener refuses to auto-replace them
+        finding.conditional_grants = sorted(scan.conditional & used)
+        # unused-looking data-plane grants: usage on the data plane is
+        # INVISIBLE to lookup_events (management events only), so these are
+        # "unknown usage", not confirmed excess — never classified unused
+        finding.unknown_usage_actions = sorted(
+            action
+            for action, granted in scan.granted.items()
+            if not granted.used and not granted.error_only and action.startswith(_DATA_PLANE_SERVICE_PREFIXES)
+        )
         self._collect_wildcards(finding, scan.wildcard_patterns, used)
 
     def _collect_wildcards(
@@ -336,7 +367,11 @@ class Analyzer:
 
     def _score_risk(self, finding: PrincipalFinding) -> None:
         """Risk score 0..100: prioritize which principal to tighten first."""
-        unused = [g for g in finding.granted_actions if not g.used]
+        # unknown-usage data-plane grants are NOT confirmed excess (their
+        # usage may simply be invisible to lookup_events); exclude them from
+        # the unused set so reports and risk stay honest.
+        unknown = set(finding.unknown_usage_actions)
+        unused = [g for g in finding.granted_actions if not g.used and g.action not in unknown]
         finding.unused_actions = sorted(unused, key=lambda g: g.action)
 
         if finding.granted_count == 0:
