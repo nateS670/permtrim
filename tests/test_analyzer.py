@@ -126,7 +126,18 @@ class TestAnalyzerOnSample:
         # inline s3:Get* and the group's EC2 policies are subsets of it.
         assert alice.granted_count == 20455
         assert alice.used_actions == ["s3:getobject"]
-        assert alice.unused_count == alice.granted_count - 1
+        # data-plane grants (s3/lambda/dynamodb/qldb) have UNKNOWN usage —
+        # lookup_events cannot see data events — so they are excluded from
+        # the unused count and reported separately instead.
+        unknown = len(alice.unknown_usage_actions)
+        assert unknown == sum(
+            1
+            for g in alice.granted_actions
+            if not g.used and g.action.startswith(("s3:", "lambda:", "dynamodb:", "qldb:"))
+        )
+        assert unknown > 300  # AdministratorAccess covers all data-plane services
+        assert alice.unused_count == alice.granted_count - 1 - unknown
+        assert "s3:getobject" not in alice.unknown_usage_actions  # used ones stay used
 
     def test_alice_wildcards_reported(self, sample_report):
         alice = next(f for f in sample_report.findings if f.name == "alice")
