@@ -1,5 +1,5 @@
 
-# permtrim
+# permtrim.
 
 **LLM-Powered Multi-Cloud IAM Least-Privilege Detector & Automatic Tightener**
 
