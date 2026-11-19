@@ -20,6 +20,11 @@ Outcome statuses (honest about what was actually validated):
 * ``needs_review`` — passed every guardrail check at the ACTION level, but
   the snapshot carried no resource provenance (Azure role assignments,
   older collectors), so resource scoping must be reviewed by a human.
+* ``manual_review`` — some used actions were originally granted under a
+  ``Condition`` element (MFA, VPC endpoint, ...). permtrim does not evaluate
+  conditions, and an automatically generated replacement could silently drop
+  them, *widening* effective access; no policy is generated for such
+  principals.
 * ``insufficient_data`` — the activity window was truncated (AWS API caps);
   tightening from incomplete usage data could break production, so no policy
   is generated until the window is complete.
@@ -47,7 +52,7 @@ class PrincipalOutcome:
     """What happened while tightening one principal."""
 
     principal: str  # "user:alice"
-    # "verified" | "needs_review" | "idle" | "insufficient_data" | "failed"
+    # "verified" | "needs_review" | "manual_review" | "idle" | "insufficient_data" | "failed"
     status: str
     proposer: str = ""
     attempts: list[str] = field(default_factory=list)
@@ -81,6 +86,7 @@ class TightenResult:
                 "verified": len(self.verified),
                 "needs_review": sum(1 for o in self.outcomes if o.status == "needs_review"),
                 "idle": sum(1 for o in self.outcomes if o.status == "idle"),
+                "manual_review": sum(1 for o in self.outcomes if o.status == "manual_review"),
                 "insufficient_data": sum(1 for o in self.outcomes if o.status == "insufficient_data"),
                 "failed": sum(1 for o in self.outcomes if o.status == "failed"),
             },
@@ -107,6 +113,12 @@ class TightenerConfig:
     # tightening from incomplete data risks breaking production. Opt in
     # explicitly (you know the window is representative anyway) to override.
     allow_truncated_window: bool = False
+    # Proceed even when the principal holds unused-LOOKING data-plane grants
+    # (s3/lambda/dynamodb/qldb): lookup_events cannot see data events, so
+    # their usage is "unknown", not confirmed absent. Default: stop and
+    # report manual review — dropping a permission that IS being used on the
+    # data plane would break production.
+    allow_unknown_data_plane_usage: bool = False
 
 
 class Tightener:
@@ -173,6 +185,40 @@ class Tightener:
             outcome.status = "idle"
             outcome.proposer = "none"
             outcome.attempts = ["no working usage in window — candidate for access review"]
+            return outcome
+
+        # Original grants carrying Condition elements (MFA, VPC endpoint, ...)
+        # must not be auto-replaced: permtrim cannot evaluate the condition,
+        # and a replacement without it would widen effective access.
+        if finding.conditional_grants:
+            outcome.status = "manual_review"
+            outcome.proposer = "none"
+            outcome.attempts = [
+                "used actions granted under a Condition element "
+                f"({', '.join(finding.conditional_grants[:5])}"
+                f"{' ...' if len(finding.conditional_grants) > 5 else ''}): "
+                "permtrim does not evaluate conditions; an automatic replacement "
+                "could drop the condition and widen effective access — "
+                "no policy generated, review manually"
+            ]
+            return outcome
+
+        # Data-plane grants with no observed usage: lookup_events cannot see
+        # data events, so "unused" there means "unknown", not "absent".
+        # Dropping them could break production; stop unless explicitly overridden.
+        if finding.unknown_usage_actions and not self._config.allow_unknown_data_plane_usage:
+            outcome.status = "manual_review"
+            outcome.proposer = "none"
+            sample = finding.unknown_usage_actions[:5]
+            outcome.attempts = [
+                "unused-looking DATA-PLANE grants "
+                f"({', '.join(sample)}{' ...' if len(finding.unknown_usage_actions) > 5 else ''}): "
+                "cloudtrail lookup_events does not return data events, so their usage "
+                "is unknown, not confirmed absent — no policy generated; enable "
+                "CloudTrail Lake / S3 data-event ingestion or review manually "
+                "(allow_unknown_data_plane_usage=True overrides when you know the "
+                "window is representative)"
+            ]
             return outcome
 
         # ---- primary proposer with retries
