@@ -67,12 +67,15 @@ _WILDCARD_EXAMPLES_LIMIT = 5
 # on anything it cannot positively verify:
 #
 #   "data"         — documented CloudTrail data event
-#   "management"   — documented management event, or an action of a service
-#       the bundled dataset knows that contributes no data events at all
+#   "management"   — documented management event, an action of a service
+#       with a closed data-event set, or an action of a service the
+#       CloudTrail data-event resource-type table verifies as contributing
+#       no data events at all (_AWS_MANAGEMENT_ONLY_SERVICES)
 #   "unclassified" — the classifier cannot place it: an action of a mixed
-#       service missing from both tables, or an action of a service the
-#       bundled dataset does not know at all (a brand-new AWS service, a
-#       typo). Conservative default: treated like a data event (unknown
+#       service missing from both action tables, or a service in neither
+#       verification set (a brand-new AWS service, a typo'd prefix, or a
+#       catalog service whose event visibility the tables do not cover).
+#       Conservative default: treated like a data event (unknown
 #       usage, never silently removed) AND surfaced on
 #       ``PrincipalFinding.unclassified_actions`` so reviewers can see
 #       exactly which actions the table could not classify.
@@ -82,48 +85,143 @@ _WILDCARD_EXAMPLES_LIMIT = 5
 # whose data-plane grants have no observed usage. Adding entries here reduces
 # review noise; an OUTDATED table errs on the safe side (unclassified grants
 # default to data-plane), never to silent removal. The same fail-closed rule
-# covers the dataset itself: a service the bundled dataset does not know is
-# UNCLASSIFIED, never management — claiming management would make a
-# never-observed grant droppable as "unused" when its data-plane usage may
-# simply be invisible to lookup_events. CloudTrail Lake / S3 data-event
-# ingestion (planned) will lift the whole limitation.
+# covers the dataset itself: ``management`` — the removable side — requires
+# the CloudTrail doc to positively verify the service contributes no data
+# events (its IAM prefix is absent from the complete resource-type table,
+# transcribed into ``_AWS_MANAGEMENT_ONLY_SERVICES``). A service merely
+# PRESENT in the IAM catalog (``registry.service_exists``) proves nothing
+# about event visibility: AWS AppConfig (data events since 2024-01) was in
+# the catalog all along while ``appconfig:GetLatestConfiguration`` usage was
+# invisible to lookup_events. CloudTrail Lake / S3 data-event ingestion
+# (planned) will lift the whole limitation.
 #
 # Transcribed (2026-11) from:
-#   - CloudTrail User Guide, "Logging data events" (resource-type table)
+#   - CloudTrail User Guide, "Logging data events" (resource-type table,
+#     276 rows / 170 services; every row mapped to its IAM prefix in
+#     scripts/build_engine_tables.py — None where no IAM prefix in the
+#     bundled dataset authorizes the data events)
 #   - S3 User Guide, "Logging Amazon S3 API calls using AWS CloudTrail"
 #     (per-resource-type Data APIs + the bucket-level management list)
 #   - DynamoDB Developer Guide, "Logging DynamoDB API calls using CloudTrail"
-#   - SQS / SNS Developer Guides, "Logging ... API calls using AWS CloudTrail"
+#   - SQS / SNS Developer Guides, "Logging ... API calls using CloudTrail"
 #   - Lambda Developer Guide, "Logging Lambda API calls using CloudTrail"
 #   - S3 Tables / S3 Vectors User Guides, "... information in CloudTrail"
-# QLDB is deliberately ABSENT: it has no CloudTrail data events (all qldb:*
-# calls are management events, visible to lookup_events).
+#   - AppConfig User Guide, "Logging AWS AppConfig API calls using CloudTrail"
+#   - SWF Developer Guide, "Recording API calls with CloudTrail"
+#   - RDS Aurora User Guide, "Logging Amazon RDS Data API calls" (data events)
+# QLDB is deliberately ABSENT from the data-event table: it has no CloudTrail
+# data events (all qldb:* calls are management events, visible to
+# lookup_events), so it sits in _AWS_MANAGEMENT_ONLY_SERVICES.
 _DATA = "data"
 _MANAGEMENT = "management"
 _UNCLASSIFIED = "unclassified"
 
-# Services that contribute CloudTrail data events (from the resource-type
-# table). Actions of every OTHER service are management events by definition.
+# Services that contribute CloudTrail data events — every IAM prefix mapped
+# from at least one row of the CloudTrail "Logging data events" resource-type
+# table (transcribed 2026-11; regeneration script:
+# scripts/build_engine_tables.py). A service absent from this set is NOT
+# thereby management — it must additionally be verified as data-event-free
+# via _AWS_MANAGEMENT_ONLY_SERVICES below.
 _AWS_DATA_EVENT_SERVICES: frozenset[str] = frozenset(
     {
-        "s3",
-        "s3express",
-        "s3-object-lambda",
-        "s3tables",
-        "s3vectors",
-        "lambda",
-        "dynamodb",
-        "sns",
-        "sqs",
-        "ebs",
+        "acm", "aidevops", "aiops", "airflow", "amplify", "aoss", "appconfig", "application-signals",
+        "appsync", "b2bi", "backup", "bedrock", "bedrock-agentcore", "cassandra",
+        "cloudfront-keyvaluestore", "cloudtrail-data", "cloudwatch", "codeguru-profiler",
+        "codewhisperer", "cognito-identity", "dataexchange", "deadline", "dsql", "dynamodb", "ebs",
+        "ec2-instance-connect", "ecs", "eks", "events", "finspace", "firehose", "fsx",
+        "gameliftstreams", "geo-maps", "geo-places", "geo-routes", "glue", "guardduty", "healthlake",
+        "iot", "iotsitewise", "iottwinmaker", "kendra-ranking", "kinesis", "kinesisvideo", "lambda",
+        "lex", "logs", "machinelearning", "managedblockchain", "managedblockchain-query",
+        "medical-imaging", "mobiletargeting", "neptune-graph", "networkflowmonitor", "one",
+        "payment-cryptography", "pca-connector-ad", "pca-connector-scep", "qapps", "qbusiness",
+        "qdeveloper", "quicksight", "rds-data", "redshift-data", "resource-explorer-2", "rum", "s3",
+        "s3-object-lambda", "s3-outposts", "s3express", "s3tables", "s3vectors", "sagemaker", "scn",
+        "sdb", "servicediscovery", "ses", "signer", "sms-voice", "sns", "social-messaging", "sqs",
+        "ssm", "ssmmessages", "states", "support", "swf", "textract", "thinclient", "timestream",
+        "transform", "uxc", "verifiedpermissions", "wellarchitected", "xray",
+    }
+)
+
+# Services the same CloudTrail table positively identifies as contributing
+# NO data events (their IAM prefix appears in no row of the resource-type
+# table). Every action of these is a management event: visible to
+# lookup_events, so absence of usage is real evidence of non-use. A service
+# in NEITHER set is unclassified — the classifier makes no claim about it.
+_AWS_MANAGEMENT_ONLY_SERVICES: frozenset[str] = frozenset(
+    {
+        "a2c", "a4b", "access-analyzer", "account", "acm-pca", "aco-automation", "action-recommendations",
+        "activate", "airflow-serverless", "amplifybackend", "amplifyuibuilder", "apigateway",
+        "app-integrations", "appfabric", "appflow", "application-autoscaling", "application-transformation",
+        "applicationinsights", "appmesh", "appmesh-preview", "apprunner", "appstream", "appstudio",
+        "apptest", "aps", "arc-region-switch", "arc-zonal-shift", "arsenal", "artifact", "athena",
+        "auditmanager", "autoscaling", "autoscaling-plans", "aws-marketplace", "aws-marketplace-management",
+        "aws-mcp", "aws-portal", "awsconnector", "backup-gateway", "backup-search", "backup-storage",
+        "batch", "bcm-dashboards", "bcm-data-exports", "bcm-pricing-calculator", "bcm-recommended-actions",
+        "bedrock-mantle", "billing", "billingconductor", "braket", "budgets", "bugbust", "cases", "ce",
+        "chatbot", "chime", "cleanrooms", "cleanrooms-ml", "cloud9", "clouddirectory", "cloudformation",
+        "cloudfront", "cloudhsm", "cloudsearch", "cloudshell", "cloudtrail", "codeartifact", "codebuild",
+        "codecatalyst", "codecommit", "codeconnections", "codedeploy", "codedeploy-commands-secure",
+        "codeguru", "codeguru-reviewer", "codeguru-security", "codepipeline", "codestar",
+        "codestar-connections", "codestar-notifications", "cognito-idp", "cognito-sync", "comprehend",
+        "comprehendmedical", "compute-optimizer", "config", "connect", "connect-campaigns", "consoleapp",
+        "consolidatedbilling", "controlcatalog", "controltower", "cost-optimization-hub", "cur",
+        "customer-verification", "databrew", "datapipeline", "datasync", "datazone", "dax", "dbqms",
+        "detective", "devicefarm", "devops-guru", "directconnect", "discovery", "dlm", "dms",
+        "docdb-elastic", "drs", "ds", "ds-data", "ec2", "ec2messages", "ecr", "ecr-public", "ecs-mcp",
+        "eks-auth", "eks-mcp", "elasticache", "elasticbeanstalk", "elasticfilesystem",
+        "elasticloadbalancing", "elasticmapreduce", "elastictranscoder", "elemental-activations",
+        "elemental-appliances-software", "elemental-inference", "elemental-support-cases",
+        "elemental-support-content", "emr-containers", "emr-serverless", "entityresolution", "es",
+        "evidently", "evs", "execute-api", "finspace-api", "fis", "fms", "forecast", "frauddetector",
+        "freertos", "freetier", "gamelift", "geo", "glacier", "globalaccelerator", "grafana", "greengrass",
+        "groundstation", "groundtruthlabeling", "health", "health-agent", "honeycode", "iam",
+        "identity-sync", "identitystore", "identitystore-auth", "imagebuilder", "importexport", "inspector",
+        "inspector-scan", "inspector2", "inspector2-telemetry", "interconnect", "internetmonitor",
+        "invoicing", "iot-device-tester", "iotanalytics", "iotdeviceadvisor", "iotevents", "iotfleethub",
+        "iotfleetwise", "iotjobsdata", "iotmanagedintegrations", "iotwireless", "iq", "iq-permission",
+        "ivs", "ivschat", "kafka", "kafka-cluster", "kafkaconnect", "kendra", "kinesisanalytics", "kms",
+        "lakeformation", "launchwizard", "license-manager", "license-manager-linux-subscriptions",
+        "license-manager-user-subscriptions", "lightsail", "lookoutequipment", "lookoutmetrics",
+        "lookoutvision", "m2", "macie2", "mapcredits", "marketplacecommerceanalytics", "mechanicalturk",
+        "mediaconnect", "mediaconvert", "mediaimport", "medialive", "mediapackage", "mediapackage-vod",
+        "mediapackagev2", "mediastore", "mediatailor", "memorydb", "mgh", "mgn",
+        "migrationhub-orchestrator", "migrationhub-strategy", "mobileanalytics", "monitron", "mpa", "mq",
+        "neptune-db", "network-firewall", "network-security-director", "networkmanager",
+        "networkmanager-chat", "networkmonitor", "nimble", "notifications", "notifications-contacts",
+        "nova-act", "oam", "observabilityadmin", "odb", "omics", "opensearch", "opsworks", "opsworks-cm",
+        "organizations", "osis", "outposts", "panorama", "partnercentral",
+        "partnercentral-account-management", "payments", "pcs", "personalize", "pi", "pipes", "polly",
+        "pricing", "pricingplanmanager", "private-networks", "profile", "proton", "purchase-orders", "q",
+        "qldb", "ram", "rbin", "rds", "rds-db", "redshift", "redshift-serverless", "refactor-spaces",
+        "rekognition", "repostspace", "resiliencehub", "resource-explorer", "resource-groups", "rhelkb",
+        "robomaker", "rolesanywhere", "route53", "route53-recovery-cluster",
+        "route53-recovery-control-config", "route53-recovery-readiness", "route53domains",
+        "route53globalresolver", "route53profiles", "route53resolver", "rtbfabric",
+        "sagemaker-data-science-assistant", "sagemaker-geospatial", "sagemaker-mlflow",
+        "sagemaker-unified-studio-mcp", "savingsplans", "scheduler", "schemas", "secretsmanager",
+        "security-ir", "securityagent", "securityhub", "securitylake", "serverlessrepo", "servicecatalog",
+        "serviceextract", "servicequotas", "shield", "signin", "simspaceweaver", "sms",
+        "snow-device-management", "snowball", "sqlworkbench", "ssm-contacts", "ssm-guiconnect",
+        "ssm-incidents", "ssm-quicksetup", "ssm-sap", "sso", "sso-directory", "sso-oauth", "storagegateway",
+        "sts", "support-console", "supportapp", "supportplans", "sustainability", "synthetics", "tag",
+        "tax", "timestream-influxdb", "tiros", "tnb", "transcribe", "transfer", "transform-custom",
+        "translate", "trustedadvisor", "ts", "user-subscriptions", "vendor-insights", "verified-access",
+        "voiceid", "vpc-lattice", "vpc-lattice-svcs", "vpce", "waf", "waf-regional", "wafv2", "wam",
+        "wickr", "wisdom", "workdocs", "worklink", "workmail", "workmailmessageflow", "workspaces",
+        "workspaces-instances", "workspaces-web",
     }
 )
 
 # Services where EVERY action outside ``_AWS_DATA_EVENT_ACTIONS`` is a
 # management event (the service documents a closed data-event set):
-# Lambda logs only Invoke-family calls as data events and everything else as
-# management events; the EBS direct APIs are all snapshot-block operations.
-_AWS_MANAGEMENT_BY_DEFAULT_SERVICES: frozenset[str] = frozenset({"lambda", "ebs"})
+# Lambda logs only Invoke-family calls as data events; the EBS direct APIs
+# are all snapshot-block operations; AppConfig's data events are only the two
+# appconfigdata retrieval calls (every other operation is control plane);
+# the RDS Data API / Redshift Data API / CloudTrail Data services exist for
+# exactly their data-event calls.
+_AWS_MANAGEMENT_BY_DEFAULT_SERVICES: frozenset[str] = frozenset(
+    {"lambda", "ebs", "appconfig", "rds-data", "redshift-data", "cloudtrail-data"}
+)
 
 _EMPTY: frozenset[str] = frozenset()
 
@@ -296,6 +394,83 @@ _AWS_DATA_EVENT_ACTIONS: dict[str, frozenset[str]] = {
             "listsnapshotblocks",
             "putsnapshotblock",
             "startsnapshot",
+        }
+    ),
+    # AWS AppConfig (AWS::AppConfig::Configuration): the two appconfigdata
+    # retrieval calls are data events; every other operation is control
+    # plane (see _AWS_MANAGEMENT_BY_DEFAULT_SERVICES).
+    "appconfig": frozenset({"getlatestconfiguration", "startconfigurationsession"}),
+    # RDS Data API (AWS::RDS::DBCluster, Aurora serverless & provisioned):
+    # all five operations are data events; ExecuteSql is the legacy name of
+    # the same class.
+    "rds-data": frozenset(
+        {
+            "batchexecutestatement",
+            "begintransaction",
+            "committransaction",
+            "executesql",
+            "executestatement",
+            "rollbacktransaction",
+        }
+    ),
+    # Redshift Data API (AWS::Redshift::Cluster): data-plane SQL access.
+    "redshift-data": frozenset(
+        {
+            "batchexecutestatement",
+            "cancelstatement",
+            "describestatement",
+            "describetable",
+            "executestatement",
+            "getstatementresult",
+            "listdatabases",
+            "listschemas",
+            "liststatements",
+            "listtables",
+        }
+    ),
+    # CloudTrail Data (AWS::CloudTrail::Channel): partner/event ingestion
+    # into CloudTrail Lake.
+    "cloudtrail-data": frozenset({"putauditevents"}),
+    # Amazon SWF (AWS::SWF::Domain): workflow-execution APIs, task events
+    # and the decision events emitted by RespondDecisionTaskCompleted. The
+    # control-plane list (domain/type/tag registration) is in
+    # _AWS_MANAGEMENT_EVENT_ACTIONS; actions in neither list are
+    # unclassified.
+    "swf": frozenset(
+        {
+            # workflow execution APIs
+            "countclosedworkflowexecutions",
+            "countopenworkflowexecutions",
+            "describeworkflowexecution",
+            "getworkflowexecutionhistory",
+            "listclosedworkflowexecutions",
+            "listopenworkflowexecutions",
+            "requestcancelworkflowexecution",
+            "signalworkflowexecution",
+            "startworkflowexecution",
+            "terminateworkflowexecution",
+            # task events
+            "countpendingactivitytasks",
+            "pollforactivitytask",
+            "pollfordecisiontask",
+            "recordactivitytaskheartbeat",
+            "respondactivitytaskcanceled",
+            "respondactivitytaskcompleted",
+            "respondactivitytaskfailed",
+            "responddecisiontaskcompleted",
+            # decision events (one data event per decision)
+            "canceltimer",
+            "cancelworkflowexecution",
+            "completeworkflowexecution",
+            "continueasnewworkflowexecution",
+            "failworkflowexecution",
+            "recordmarker",
+            "requestcancelactivitytask",
+            "requestcancelexternalworkflowexecution",
+            "scheduleactivitytask",
+            "signalexternalworkflowexecution",
+            "startchildworkflowexecution",
+            "starttimer",
         }
     ),
 }
@@ -711,6 +886,33 @@ _AWS_MANAGEMENT_EVENT_ACTIONS: dict[str, frozenset[str]] = {
             "untagqueue",
         }
     ),
+    # SWF control plane (domain / activity-type / workflow-type / tag
+    # operations) — everything else in the service is a data event or
+    # unclassified (see _AWS_DATA_EVENT_ACTIONS["swf"]).
+    "swf": frozenset(
+        {
+            "deleteactivitytype",
+            "deleteworkflowtype",
+            "deprecateactivitytype",
+            "deprecatedomain",
+            "deprecateworkflowtype",
+            "describeactivitytype",
+            "describedomain",
+            "describeworkflowtype",
+            "listactivitytypes",
+            "listdomains",
+            "listtagsforresource",
+            "listworkflowtypes",
+            "registeractivitytype",
+            "registerdomain",
+            "registerworkflowtype",
+            "tagresource",
+            "undeprecateactivitytype",
+            "undeprecatedomain",
+            "undeprecateworkflowtype",
+            "untagresource",
+        }
+    ),
 }
 
 
@@ -719,32 +921,34 @@ def classify_aws_data_plane(action: str, *, registry: ActionRegistry | None = No
 
     Returns ``"data"`` (documented CloudTrail data event), ``"management"``
     (documented management event, visible to lookup_events) or
-    ``"unclassified"`` (action the classifier cannot place; callers must
-    default it to the safe side).
+    ``"unclassified"`` (the classifier cannot verify either claim; callers
+    must default it to the safe side).
 
-    Fail-closed on unknown services: a service in neither the data-event
-    table nor ``registry`` (default: the bundled dataset) is unclassifiable.
-    A brand-new service might be a data-plane one whose usage lookup_events
-    can never see, so ``"management"`` — the removable side — requires
-    positive verification that the service exists AND contributes no data
-    events. Never the reverse assumption.
+    ``management`` — the removable side — requires POSITIVE verification
+    from the transcribed CloudTrail tables: either the action itself is a
+    documented management event, its service documents a closed data-event
+    set, or the service appears in no row of the complete data-event
+    resource-type table (``_AWS_MANAGEMENT_ONLY_SERVICES``). Presence in
+    the IAM catalog alone proves nothing: AWS AppConfig sat in the catalog
+    while ``appconfig:GetLatestConfiguration`` (a data event since
+    2024-01) was invisible to lookup_events — so ``registry`` is accepted
+    for interface compatibility but deliberately NOT consulted as
+    evidence here.
     """
     service, sep, name = action.strip().lower().partition(":")
     if not sep or not name:
         return _UNCLASSIFIED
-    if service not in _AWS_DATA_EVENT_SERVICES:
-        if registry is None:
-            registry = load_default_registry()
-        if not registry.service_exists(service):
-            return _UNCLASSIFIED  # unknown service: never claim management
-        return _MANAGEMENT  # known service that contributes no data events
-    if name in _AWS_DATA_EVENT_ACTIONS.get(service, _EMPTY):
-        return _DATA
-    if service in _AWS_MANAGEMENT_BY_DEFAULT_SERVICES:
-        return _MANAGEMENT  # closed data-event set; everything else is mgmt
-    if name in _AWS_MANAGEMENT_EVENT_ACTIONS.get(service, _EMPTY):
-        return _MANAGEMENT
-    return _UNCLASSIFIED
+    if service in _AWS_DATA_EVENT_SERVICES:
+        if name in _AWS_DATA_EVENT_ACTIONS.get(service, _EMPTY):
+            return _DATA
+        if service in _AWS_MANAGEMENT_BY_DEFAULT_SERVICES:
+            return _MANAGEMENT  # closed data-event set; everything else is mgmt
+        if name in _AWS_MANAGEMENT_EVENT_ACTIONS.get(service, _EMPTY):
+            return _MANAGEMENT
+        return _UNCLASSIFIED
+    if service in _AWS_MANAGEMENT_ONLY_SERVICES:
+        return _MANAGEMENT  # verified: appears in no row of the data-event table
+    return _UNCLASSIFIED  # unknown or unverified service: never claim management
 
 
 def is_unclassified_aws_action(action: str, *, registry: ActionRegistry | None = None) -> bool:
@@ -759,10 +963,12 @@ def is_data_plane_action(
 
     AWS: True for documented data events AND for unclassified actions (the
     conservative default — an unclassifiable grant must never be droppable
-    as "unused"); services missing from the dataset are unclassified, not
-    management. Azure: the matcher already carries the distinction via
-    ``Statement.data_plane`` from ``dataActions``, so this helper is only
-    consulted on AWS.
+    as "unused"). A service absent from both verification sets (neither in
+    the data-event table nor verified data-event-free) classifies as
+    unclassified, not management; IAM-catalog presence is not evidence of
+    event visibility. Azure: the matcher already carries the distinction
+    via ``Statement.data_plane`` from ``dataActions``, so this helper is
+    only consulted on AWS.
     """
     if provider == "azure":
         return False  # Azure: handled via ``Statement.data_plane``
@@ -1023,8 +1229,9 @@ class Analyzer:
         if self._provider == "azure":
             is_data_plane = statement.data_plane
         else:
-            # registry passed explicitly: "management" requires the dataset
-            # to positively know the service (fail-closed on unknown ones)
+            # "management" requires positive verification from the
+            # transcribed CloudTrail tables (fail-closed otherwise); the
+            # registry is not evidence of event visibility
             classification = classify_aws_data_plane(action, registry=registry)
             is_data_plane = statement.data_plane or classification != _MANAGEMENT
             if classification == _UNCLASSIFIED:
