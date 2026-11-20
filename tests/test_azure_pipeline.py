@@ -289,6 +289,98 @@ class TestAzureCategoryMismatch:
         assert outcome.policy["permissions"][0]["dataActions"] == [self.KV_USED_DATA]
         assert "category mismatch" in " ".join(outcome.attempts)
 
+    def test_wildcard_in_actions_covering_data_grant_rejected(self):
+        """P0-B: ``Microsoft.Storage/*`` in ``actions`` — the wildcard skips
+        the literal-entry category check, coverage passes (Azure ``*``
+        crosses ``/``), and in real Azure RBAC data-plane operations are
+        granted from ``dataActions`` only, so the draft silently drops
+        working data access while looking "validated". The wildcard must be
+        category-checked: it matches a data-only grant -> rejected. Both
+        grants are USED here, so the category check is the ONLY rejection
+        reason (isolates the regression)."""
+        registry = AzureActionRegistry(
+            ["microsoft.storage/storageaccounts/read", "microsoft.storage/blob/containers/read"]
+        )
+        control = "microsoft.storage/storageaccounts/read"
+        data = "microsoft.storage/blob/containers/read"
+        finding = PrincipalFinding(
+            kind="user",
+            name="storage-wild",
+            arn=None,
+            provider="azure",
+            used_actions=[control, data],
+            granted_actions=[
+                GrantedAction(control, ["role:r"], True, False, "Read"),
+                GrantedAction(data, ["role:r"], True, False, "Read", data_plane=True),
+            ],
+            used_action_resources={},
+        )
+        draft = {"permissions": [{"actions": ["microsoft.storage/*"]}]}
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert len(verdict.reasons) == 1, verdict.reasons  # category check alone
+        joined = " ".join(verdict.reasons)
+        assert "category mismatch" in joined
+        assert "wildcard 'microsoft.storage/*' in 'actions'" in joined
+        assert "microsoft.storage/blob/containers/read" in joined
+
+    def test_wildcard_in_dataactions_covering_control_grant_rejected(self):
+        """P0-B converse: a wildcard in ``dataActions`` covering a
+        control-plane grant routes management operations onto the data
+        axis. Isolated the same way: both grants used, category check is
+        the only rejection reason."""
+        registry = AzureActionRegistry(
+            ["microsoft.storage/storageaccounts/read", "microsoft.storage/blob/containers/read"]
+        )
+        control = "microsoft.storage/storageaccounts/read"
+        data = "microsoft.storage/blob/containers/read"
+        finding = PrincipalFinding(
+            kind="user",
+            name="storage-wild-data",
+            arn=None,
+            provider="azure",
+            used_actions=[control, data],
+            granted_actions=[
+                GrantedAction(control, ["role:r"], True, False, "Read"),
+                GrantedAction(data, ["role:r"], True, False, "Read", data_plane=True),
+            ],
+            used_action_resources={},
+        )
+        draft = {"permissions": [{"dataActions": ["microsoft.storage/*"]}]}
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert not verdict.ok
+        assert len(verdict.reasons) == 1, verdict.reasons  # category check alone
+        joined = " ".join(verdict.reasons)
+        assert "category mismatch" in joined
+        assert "wildcard 'microsoft.storage/*' in 'dataActions'" in joined
+        assert "microsoft.storage/storageaccounts/read" in joined
+
+    def test_category_clean_wildcard_passes(self):
+        """P0-B happy path: a wildcard that stays inside its own category is
+        fine — a dataActions wildcard matching only data grants is a
+        legitimate re-scoping, not a misroute. Both grants are used so the
+        unused-removal baseline covers the expansion; the draft must pass
+        the WHOLE guardrail (verdict.ok), proving the wildcard check does
+        not over-reject."""
+        data_a = "microsoft.storage/blob/containers/read"
+        data_b = "microsoft.storage/blob/containers/blobs/read"
+        registry = AzureActionRegistry([data_a, data_b])
+        finding = PrincipalFinding(
+            kind="user",
+            name="storage-clean",
+            arn=None,
+            provider="azure",
+            used_actions=[data_a, data_b],
+            granted_actions=[
+                GrantedAction(data_a, ["role:r"], True, False, "Read", data_plane=True),
+                GrantedAction(data_b, ["role:r"], True, False, "Read", data_plane=True),
+            ],
+            used_action_resources={},
+        )
+        draft = {"permissions": [{"dataActions": ["microsoft.storage/blob/*/read"]}]}
+        verdict = Guardrail(registry).validate(finding, draft)
+        assert verdict.ok, verdict.feedback
+
 
 # ---------------------------------------------------------------- tightener
 
