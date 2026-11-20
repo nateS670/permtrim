@@ -347,11 +347,10 @@ class TestDataPlaneClassification:
             assert is_data_plane_action(action, provider="aws") is True
 
     def test_unknown_service_classification_with_custom_registry(self):
-        """The fail-closed default consults the registry: with a registry
-        that DOES know the service (and the data-event table not listing
-        it), the action is verified management again — the check is
-        "positively known to contribute no data events", not a hardcoded
-        service list."""
+        """The fail-closed rule does not soften for a custom registry: the
+        check is "verified by the CloudTrail data-event tables", not "known
+        to the IAM catalog". A registry that DOES know the service still
+        yields unclassified unless the transcribed tables verify it."""
         from permtrim.analyzer.action_registry import ActionRegistry
         from permtrim.analyzer.engine import classify_aws_data_plane
 
@@ -364,8 +363,11 @@ class TestDataPlaneClassification:
             }
         )
         assert custom.service_exists("brandnew") is True
-        assert classify_aws_data_plane("brandnew:getwidget", registry=custom) == "management"
-        # the default (bundled) registry does not know it -> fail closed
+        # catalog presence is NOT event-visibility evidence (the AppConfig
+        # lesson: appconfig sat in the catalog while its data events were
+        # invisible to lookup_events)
+        assert classify_aws_data_plane("brandnew:getwidget", registry=custom) == "unclassified"
+        # the default (bundled) registry does not know it either -> fail closed
         assert classify_aws_data_plane("brandnew:getwidget") == "unclassified"
 
     def test_unknown_service_grant_is_unknown_usage_not_unused(self):
@@ -496,25 +498,102 @@ class TestDataPlaneClassification:
         assert finding.unused_count == 1
 
     def test_unlisted_service_is_management(self):
-        """Services that contribute NO CloudTrail data events (per the
-        resource-type table) classify every action as management — as long
-        as the bundled dataset positively knows the service. That is the
-        P0-A fail-closed rule: ``management`` (the removable side) requires
-        verification (dataset knows the service + it is absent from the
-        data-event table); an unknown service is unclassified instead, and
-        a NEW data-event service AWS introduces later must be added to
-        ``_AWS_DATA_EVENT_SERVICES`` (see README) — until then its actions
-        classify as unclassified, never as silently-removable management."""
-        from permtrim.analyzer.action_registry import load_default_registry
-        from permtrim.analyzer.engine import _AWS_DATA_EVENT_SERVICES, classify_aws_data_plane
+        """``management`` — the removable side — requires positive
+        verification: the service's IAM prefix must appear in NO row of the
+        CloudTrail data-event resource-type table
+        (``_AWS_MANAGEMENT_ONLY_SERVICES``). Secrets Manager and QLDB pass
+        that bar; Glue does NOT (AWS::Glue::Table is a data-event row), so
+        its actions are unclassified rather than management — the AppConfig
+        lesson applied table-wide."""
+        from permtrim.analyzer.engine import (
+            _AWS_DATA_EVENT_SERVICES,
+            _AWS_MANAGEMENT_ONLY_SERVICES,
+            classify_aws_data_plane,
+        )
 
         assert "secretsmanager" not in _AWS_DATA_EVENT_SERVICES
-        assert "glue" not in _AWS_DATA_EVENT_SERVICES
-        assert "qldb" not in _AWS_DATA_EVENT_SERVICES  # no data events at all
-        registry = load_default_registry()
-        # the positive-verification side of the rule: known services not in
-        # the data-event table are verified management
-        assert registry.service_exists("secretsmanager")
-        assert registry.service_exists("glue")
+        assert "secretsmanager" in _AWS_MANAGEMENT_ONLY_SERVICES
+        assert "qldb" in _AWS_MANAGEMENT_ONLY_SERVICES  # no data events at all
+        assert "glue" in _AWS_DATA_EVENT_SERVICES  # AWS::Glue::Table row
+        # the positive-verification side of the rule: services absent from
+        # every data-event row are verified management
         assert classify_aws_data_plane("secretsmanager:getsecretvalue") == "management"
-        assert classify_aws_data_plane("glue:getjob") == "management"
+        assert classify_aws_data_plane("qldb:executestatement") == "management"
+        # Glue contributes data events but has no transcribed action table
+        # yet: every glue action stays unclassified (safe side)
+        assert classify_aws_data_plane("glue:getjob") == "unclassified"
+
+    def test_appconfig_data_events(self):
+        """P0-A regression: AWS AppConfig has had CloudTrail DATA events
+        since 2024-01 (GetLatestConfiguration, StartConfigurationSession —
+        invisible to lookup_events) while every other appconfig action is
+        control plane. Before the fix, appconfig was 'known to the IAM
+        catalog but absent from the data-event service list', so its
+        retrieval grants classified as management and could be silently
+        removed."""
+        from permtrim.analyzer.engine import classify_aws_data_plane, is_data_plane_action
+
+        assert classify_aws_data_plane("appconfig:getlatestconfiguration") == "data"
+        assert classify_aws_data_plane("appconfig:startconfigurationsession") == "data"
+        assert is_data_plane_action("appconfig:getlatestconfiguration", provider="aws") is True
+        assert is_data_plane_action("appconfig:startconfigurationsession", provider="aws") is True
+        # the closed-set control plane: no manual-review noise
+        assert classify_aws_data_plane("appconfig:getconfiguration") == "management"
+        assert classify_aws_data_plane("appconfig:createapplication") == "management"
+        assert classify_aws_data_plane("appconfig:startdeployment") == "management"
+
+    def test_swf_data_events(self):
+        """Amazon SWF logs workflow/task/decision activity as DATA events
+        (AWS::SWF::Domain, since 2024-02) and its control plane (domain,
+        activity-type, workflow-type, tag operations) as management
+        events. Both tables are transcribed; together they cover the
+        bundled swf service completely."""
+        from permtrim.analyzer.engine import classify_aws_data_plane
+
+        for action in (
+            "swf:pollfordecisiontask",
+            "swf:pollforactivitytask",
+            "swf:startworkflowexecution",
+            "swf:responddecisiontaskcompleted",
+            "swf:signalworkflowexecution",
+            "swf:recordmarker",
+            "swf:starttimer",
+        ):
+            assert classify_aws_data_plane(action) == "data", action
+        for action in (
+            "swf:registerdomain",
+            "swf:describeworkflowtype",
+            "swf:listactivitytypes",
+            "swf:tagresource",
+        ):
+            assert classify_aws_data_plane(action) == "management", action
+
+    def test_data_api_services_are_data_events(self):
+        """The RDS Data API (AWS::RDS::DBCluster), the Redshift Data API
+        (AWS::Redshift::Cluster) and CloudTrail partner ingestion
+        (AWS::CloudTrail::Channel) are DATA events — data-plane SQL/audit
+        activity invisible to lookup_events by default."""
+        from permtrim.analyzer.engine import classify_aws_data_plane
+
+        assert classify_aws_data_plane("rds-data:executestatement") == "data"
+        assert classify_aws_data_plane("rds-data:batchexecutestatement") == "data"
+        assert classify_aws_data_plane("redshift-data:executestatement") == "data"
+        assert classify_aws_data_plane("redshift-data:getstatementresult") == "data"
+        assert classify_aws_data_plane("cloudtrail-data:putauditevents") == "data"
+
+    def test_data_event_service_without_action_table_is_unclassified(self):
+        """Services whose data events exist but whose per-action split is
+        not transcribed yet (Glue, SageMaker, Timestream, ...) classify
+        every action as unclassified — never as silently-removable
+        management. This is the fail-closed default for the 96-service
+        data-event table."""
+        from permtrim.analyzer.engine import classify_aws_data_plane
+
+        for action in (
+            "glue:gettable",
+            "sagemaker:invokeendpoint",
+            "timestream:select",
+            "kinesis:putrecord",
+            "states:startexecution",
+        ):
+            assert classify_aws_data_plane(action) == "unclassified", action
