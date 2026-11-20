@@ -63,22 +63,30 @@ _WILDCARD_EXAMPLES_LIMIT = 5
 # express this: S3 mixes object-level data events (GetObject) with bucket
 # management events (CreateBucket), SNS mixes Publish with CreateTopic, etc.
 #
-# Classification is therefore three-valued and ACTION-level:
+# Classification is therefore three-valued and ACTION-level, and FAIL-CLOSED
+# on anything it cannot positively verify:
 #
 #   "data"         — documented CloudTrail data event
-#   "management"   — documented management event
-#   "unclassified" — lives in a service that mixes both categories but is in
-#       neither list (new/obscure actions). Conservative default: treated
-#       like a data event (unknown usage, never silently removed) AND
-#       surfaced on ``PrincipalFinding.unclassified_actions`` so reviewers
-#       can see exactly which actions the table could not classify.
+#   "management"   — documented management event, or an action of a service
+#       the bundled dataset knows that contributes no data events at all
+#   "unclassified" — the classifier cannot place it: an action of a mixed
+#       service missing from both tables, or an action of a service the
+#       bundled dataset does not know at all (a brand-new AWS service, a
+#       typo). Conservative default: treated like a data event (unknown
+#       usage, never silently removed) AND surfaced on
+#       ``PrincipalFinding.unclassified_actions`` so reviewers can see
+#       exactly which actions the table could not classify.
 #
 # This is a CLASSIFICATION table, not a denial list: ``is_data_plane_action``
 # is the single decision point, and the tightener stops for any principal
 # whose data-plane grants have no observed usage. Adding entries here reduces
 # review noise; an OUTDATED table errs on the safe side (unclassified grants
-# default to data-plane), never to silent removal. CloudTrail Lake / S3
-# data-event ingestion (planned) will lift the whole limitation.
+# default to data-plane), never to silent removal. The same fail-closed rule
+# covers the dataset itself: a service the bundled dataset does not know is
+# UNCLASSIFIED, never management — claiming management would make a
+# never-observed grant droppable as "unused" when its data-plane usage may
+# simply be invisible to lookup_events. CloudTrail Lake / S3 data-event
+# ingestion (planned) will lift the whole limitation.
 #
 # Transcribed (2026-11) from:
 #   - CloudTrail User Guide, "Logging data events" (resource-type table)
@@ -706,19 +714,30 @@ _AWS_MANAGEMENT_EVENT_ACTIONS: dict[str, frozenset[str]] = {
 }
 
 
-def classify_aws_data_plane(action: str) -> str:
+def classify_aws_data_plane(action: str, *, registry: ActionRegistry | None = None) -> str:
     """Three-way classification of an AWS action (see the block above).
 
     Returns ``"data"`` (documented CloudTrail data event), ``"management"``
     (documented management event, visible to lookup_events) or
-    ``"unclassified"`` (action of a mixed service missing from both tables;
-    callers must default it to the safe side).
+    ``"unclassified"`` (action the classifier cannot place; callers must
+    default it to the safe side).
+
+    Fail-closed on unknown services: a service in neither the data-event
+    table nor ``registry`` (default: the bundled dataset) is unclassifiable.
+    A brand-new service might be a data-plane one whose usage lookup_events
+    can never see, so ``"management"`` — the removable side — requires
+    positive verification that the service exists AND contributes no data
+    events. Never the reverse assumption.
     """
     service, sep, name = action.strip().lower().partition(":")
     if not sep or not name:
         return _UNCLASSIFIED
     if service not in _AWS_DATA_EVENT_SERVICES:
-        return _MANAGEMENT  # service contributes no data events at all
+        if registry is None:
+            registry = load_default_registry()
+        if not registry.service_exists(service):
+            return _UNCLASSIFIED  # unknown service: never claim management
+        return _MANAGEMENT  # known service that contributes no data events
     if name in _AWS_DATA_EVENT_ACTIONS.get(service, _EMPTY):
         return _DATA
     if service in _AWS_MANAGEMENT_BY_DEFAULT_SERVICES:
@@ -728,23 +747,26 @@ def classify_aws_data_plane(action: str) -> str:
     return _UNCLASSIFIED
 
 
-def is_unclassified_aws_action(action: str) -> bool:
+def is_unclassified_aws_action(action: str, *, registry: ActionRegistry | None = None) -> bool:
     """Could not be classified as management vs data event?"""
-    return classify_aws_data_plane(action) == _UNCLASSIFIED
+    return classify_aws_data_plane(action, registry=registry) == _UNCLASSIFIED
 
 
-def is_data_plane_action(action: str, *, provider: str = "aws") -> bool:
+def is_data_plane_action(
+    action: str, *, provider: str = "aws", registry: ActionRegistry | None = None
+) -> bool:
     """Is ``action`` possibly invisible to the activity source?
 
     AWS: True for documented data events AND for unclassified actions (the
     conservative default — an unclassifiable grant must never be droppable
-    as "unused"). Azure: the matcher already carries the distinction via
+    as "unused"); services missing from the dataset are unclassified, not
+    management. Azure: the matcher already carries the distinction via
     ``Statement.data_plane`` from ``dataActions``, so this helper is only
     consulted on AWS.
     """
     if provider == "azure":
         return False  # Azure: handled via ``Statement.data_plane``
-    return classify_aws_data_plane(action) != _MANAGEMENT
+    return classify_aws_data_plane(action, registry=registry) != _MANAGEMENT
 
 
 # Access-level risk weights for the risk score.
@@ -1001,7 +1023,9 @@ class Analyzer:
         if self._provider == "azure":
             is_data_plane = statement.data_plane
         else:
-            classification = classify_aws_data_plane(action)
+            # registry passed explicitly: "management" requires the dataset
+            # to positively know the service (fail-closed on unknown ones)
+            classification = classify_aws_data_plane(action, registry=registry)
             is_data_plane = statement.data_plane or classification != _MANAGEMENT
             if classification == _UNCLASSIFIED:
                 scan.unclassified.add(action)
