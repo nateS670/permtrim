@@ -462,4 +462,4 @@ regression tests (each names its test):
 Apache-2.0 — see the `LICENSE` file. The bundled IAM action dataset
 (generated from the AWS Service Authorization Reference by the
 [policy_sentry](https://github.com/salesforce/policy_sentry) project) is
-distributed under the same license
+distributed under the same license.
