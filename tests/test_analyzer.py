@@ -314,6 +314,10 @@ class TestDataPlaneClassification:
         assert classify_aws_data_plane("s3:getdataaccess") == "unclassified"
         # services outside the data-event set have no data events at all
         assert classify_aws_data_plane("ec2:runinstances") == "management"
+        # P0-A: a service the bundled dataset does not know is NEVER
+        # management — its data-plane usage would be invisible to
+        # lookup_events, so classification fails closed to unclassified
+        assert classify_aws_data_plane("brandnewservice:getwidget") == "unclassified"
 
     def test_unclassified_action_defaults_conservative(self):
         """An action of a mixed service missing from both tables must never
@@ -324,6 +328,93 @@ class TestDataPlaneClassification:
         for action in ("s3:getdataaccess", "s3-object-lambda:getobjectversion"):
             assert is_unclassified_aws_action(action) is True
             assert is_data_plane_action(action, provider="aws") is True
+
+    def test_unknown_service_is_unclassified_fail_closed(self):
+        """P0-A: a brand-new AWS service (or a typo'd prefix) the bundled
+        dataset does not know must never classify as management — the
+        classifier cannot verify it contributes no data events, and an
+        unused-looking grant of it may simply have invisible data-plane
+        usage. Fail closed: unclassified."""
+        from permtrim.analyzer.engine import (
+            classify_aws_data_plane,
+            is_data_plane_action,
+            is_unclassified_aws_action,
+        )
+
+        for action in ("brandnewservice:getwidget", "brandnewservice:*", "typoservice:listthingies"):
+            assert classify_aws_data_plane(action) == "unclassified"
+            assert is_unclassified_aws_action(action) is True
+            assert is_data_plane_action(action, provider="aws") is True
+
+    def test_unknown_service_classification_with_custom_registry(self):
+        """The fail-closed default consults the registry: with a registry
+        that DOES know the service (and the data-event table not listing
+        it), the action is verified management again — the check is
+        "positively known to contribute no data events", not a hardcoded
+        service list."""
+        from permtrim.analyzer.action_registry import ActionRegistry
+        from permtrim.analyzer.engine import classify_aws_data_plane
+
+        custom = ActionRegistry(
+            {
+                "brandnew": {
+                    "prefix": "brandnew",
+                    "privileges": {"getwidget": {"privilege": "GetWidget", "access_level": "Read"}},
+                }
+            }
+        )
+        assert custom.service_exists("brandnew") is True
+        assert classify_aws_data_plane("brandnew:getwidget", registry=custom) == "management"
+        # the default (bundled) registry does not know it -> fail closed
+        assert classify_aws_data_plane("brandnew:getwidget") == "unclassified"
+
+    def test_unknown_service_grant_is_unknown_usage_not_unused(self):
+        """P0-A end to end: a principal granted actions of a service the
+        dataset does not know, with no observed usage, gets them reported
+        as unknown usage + unclassified — never as removable unused, so the
+        tightener stops instead of silently stripping them."""
+        from datetime import datetime, timezone
+
+        from permtrim.analyzer.engine import Analyzer
+        from permtrim.models.activity import ActivityLog, ActivityWindow, UsageSummary
+        from permtrim.models.iam import IaMSnapshot, IAMUser
+
+        now = datetime.now(timezone.utc)
+        doc = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    # the literal action AND a wildcard the registry cannot
+                    # expand (kept verbatim by the scanner) — both paths
+                    "Action": ["brandnewservice:getwidget", "brandnewservice:*"],
+                    "Resource": "*",
+                }
+            ],
+        }
+        iam = IaMSnapshot(
+            account_id="1",
+            collector_identity_arn="arn",
+            collected_at=now,
+            users=[IAMUser(name="u", arn="arn:u", inline_policies={"brandnew": doc})],
+            roles=[],
+            groups=[],
+            policies={},
+        )
+        activity = ActivityLog(
+            window=ActivityWindow(start=now, end=now, lookback_days=30),
+            events=[],
+            usage={("user", "u"): UsageSummary(action_counts={})},
+        )
+        report = Analyzer().analyze(iam, activity)
+        finding = next(f for f in report.findings if f.name == "u")
+        assert finding.unused_count == 0
+        assert finding.unused_actions == []
+        assert finding.unknown_usage_actions == ["brandnewservice:*", "brandnewservice:getwidget"]
+        assert finding.unclassified_actions == ["brandnewservice:*", "brandnewservice:getwidget"]
+        granted = {g.action: g for g in finding.granted_actions}
+        assert granted["brandnewservice:getwidget"].data_plane is True
+        assert granted["brandnewservice:*"].data_plane is True
 
     def test_is_data_plane_helper_azure_is_noop(self):
         """On Azure the matcher carries the flag from dataActions; the helper
@@ -406,14 +497,24 @@ class TestDataPlaneClassification:
 
     def test_unlisted_service_is_management(self):
         """Services that contribute NO CloudTrail data events (per the
-        resource-type table) classify every action as management. The
-        residual limitation is the reverse case: a NEW data-event service
-        AWS introduces later must be added to ``_AWS_DATA_EVENT_SERVICES``
-        (see README) — until then its grants classify as management."""
+        resource-type table) classify every action as management — as long
+        as the bundled dataset positively knows the service. That is the
+        P0-A fail-closed rule: ``management`` (the removable side) requires
+        verification (dataset knows the service + it is absent from the
+        data-event table); an unknown service is unclassified instead, and
+        a NEW data-event service AWS introduces later must be added to
+        ``_AWS_DATA_EVENT_SERVICES`` (see README) — until then its actions
+        classify as unclassified, never as silently-removable management."""
+        from permtrim.analyzer.action_registry import load_default_registry
         from permtrim.analyzer.engine import _AWS_DATA_EVENT_SERVICES, classify_aws_data_plane
 
         assert "secretsmanager" not in _AWS_DATA_EVENT_SERVICES
         assert "glue" not in _AWS_DATA_EVENT_SERVICES
         assert "qldb" not in _AWS_DATA_EVENT_SERVICES  # no data events at all
+        registry = load_default_registry()
+        # the positive-verification side of the rule: known services not in
+        # the data-event table are verified management
+        assert registry.service_exists("secretsmanager")
+        assert registry.service_exists("glue")
         assert classify_aws_data_plane("secretsmanager:getsecretvalue") == "management"
         assert classify_aws_data_plane("glue:getjob") == "management"
