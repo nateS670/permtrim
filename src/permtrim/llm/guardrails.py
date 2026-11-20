@@ -53,6 +53,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from typing import Any
 
 from ..analyzer.action_registry import ActionRegistry
@@ -190,17 +191,29 @@ class Guardrail:
         """The draft must keep Azure's actions vs dataActions split intact.
 
         Azure role definitions carry two distinct permission axes: management
-        operations in ``actions`` and data-plane operations in
-        ``dataActions``. Routing a dataAction into ``actions`` (or the other
-        way round) changes what the permission actually grants — merging both
-        lists for the statement checks below would hide the difference, so
-        this check compares every literal draft entry against the ORIGINAL
-        grant categories from the analyzer (``GrantedAction.data_plane``). An
+        operations in ``actions`` and data-plane operations in ``dataActions``.
+        Routing a dataAction into ``actions`` (or the other way round) changes
+        what the permission actually grants — merging both lists for the
+        statement checks below would hide the difference, so this check
+        compares every literal draft entry against the ORIGINAL grant
+        categories from the analyzer (``GrantedAction.data_plane``). An
         entry that only exists as a dataAction in the original role but was
-        written to ``actions`` is rejected, and vice versa. Wildcard entries
-        are left to the no-new-permissions check (which limits their
-        expansion to the granted union); the deterministic proposer writes
-        exact strings only, so the happy path never trips here.
+        written to ``actions`` is rejected, and vice versa.
+
+        Wildcard entries (``Microsoft.Storage/*``, ``*/read``) are validated
+        the same way, category by category: a wildcard in ``actions`` is
+        rejected when it matches ANY action that exists only as a dataAction
+        in the original grants (in real Azure RBAC data-plane operations are
+        granted from ``dataActions`` only, so such a draft silently drops
+        working data access), and a wildcard in ``dataActions`` is rejected
+        when it matches a control-plane-only grant. The match set is the
+        principal's OWN grants — the no-new-permissions check already limits
+        the wildcard's expansion to that union, so this is exactly the set
+        whose category can change meaning; when the wildcard cannot be
+        verified category-safe (it matches both sides), the draft is
+        rejected: an ambiguous split is not a tightened policy. The
+        deterministic proposer writes exact strings only, so the happy path
+        never trips here.
         """
         control = {g.action for g in finding.granted_actions if not g.data_plane}
         data = {g.action for g in finding.granted_actions if g.data_plane}
@@ -218,7 +231,24 @@ class Guardrail:
             label = f"permission #{index + 1}"
             for entry in permission.get("actions") or []:
                 action = str(entry).strip().lower()
-                if not action or "*" in action or "?" in action:
+                if not action:
+                    continue
+                if "*" in action or "?" in action:
+                    # wildcard in actions must not cover any data-only grant
+                    hits = sorted(a for a in data - control if fnmatchcase(a, action))
+                    if hits:
+                        sample = ", ".join(hits[:_NEW_PERMISSION_SAMPLE])
+                        misplaced.append(
+                            f"{label}: wildcard '{entry}' in 'actions' matches dataAction(s) "
+                            f"of the original role ({sample}"
+                            + (
+                                f" +{len(hits) - _NEW_PERMISSION_SAMPLE} more"
+                                if len(hits) > _NEW_PERMISSION_SAMPLE
+                                else ""
+                            )
+                            + ") — data-plane operations are granted from dataActions only; "
+                            "list the control-plane actions explicitly or move them to dataActions"
+                        )
                     continue
                 if action not in control and action in data:
                     misplaced.append(
@@ -227,7 +257,24 @@ class Guardrail:
                     )
             for entry in permission.get("dataActions") or []:
                 action = str(entry).strip().lower()
-                if not action or "*" in action or "?" in action:
+                if not action:
+                    continue
+                if "*" in action or "?" in action:
+                    # wildcard in dataActions must not cover any control-only grant
+                    hits = sorted(a for a in control - data if fnmatchcase(a, action))
+                    if hits:
+                        sample = ", ".join(hits[:_NEW_PERMISSION_SAMPLE])
+                        misplaced.append(
+                            f"{label}: wildcard '{entry}' in 'dataActions' matches control-plane "
+                            f"action(s) of the original role ({sample}"
+                            + (
+                                f" +{len(hits) - _NEW_PERMISSION_SAMPLE} more"
+                                if len(hits) > _NEW_PERMISSION_SAMPLE
+                                else ""
+                            )
+                            + ") — control-plane operations are granted from actions only; "
+                            "list the data-plane actions explicitly or move them to actions"
+                        )
                     continue
                 if action not in data and action in control:
                     misplaced.append(
@@ -235,11 +282,11 @@ class Guardrail:
                         "original role but was written to 'dataActions'"
                     )
         if misplaced:
-            sample = misplaced[:_NEW_PERMISSION_SAMPLE]
+            misplaced_sample = misplaced[:_NEW_PERMISSION_SAMPLE]
             reasons.append(
                 "category mismatch — Azure dataActions must stay in dataActions "
                 "and control-plane actions in actions: "
-                + "; ".join(sample)
+                + "; ".join(misplaced_sample)
                 + (
                     f" (+{len(misplaced) - _NEW_PERMISSION_SAMPLE} more)"
                     if len(misplaced) > _NEW_PERMISSION_SAMPLE
