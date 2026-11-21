@@ -582,6 +582,269 @@ _AWS_MANAGEMENT_ONLY_SERVICES: frozenset[str] = frozenset(
     }
 )
 
+
+# Services whose CloudTrail split is transcribed PER ACTION (opt-in
+# layer): the classifier consults their action-level tables before the
+# service-level sets above. Actions outside the transcribed inventory
+# stay unclassified — inventory presence alone never proves management.
+_AWS_ACTION_LEVEL_SERVICES: frozenset[str] = frozenset(
+    {
+        "bedrock-mantle",
+        "health-agent",
+        "nova-act",
+    }
+)
+
+# service -> {lowercase action -> data | management | unclassified},
+# from data/aws_service_actions_2026-11.tsv (full IAM inventory with
+# the per-action CloudTrail classification) +
+# data/aws_data_event_actions_2026-11.tsv (documented data events).
+_AWS_ACTION_LEVEL_CLASSIFICATIONS: dict[str, dict[str, str]] = {
+    "bedrock-mantle": {
+        "archiveproject": "management",
+        "associatecustomizedmodel": "unclassified",
+        "callwithbearertoken": "unclassified",
+        "cancelfinetuningjob": "management",
+        "cancelinference": "data",
+        "counttokens": "data",
+        "createcustomizedmodel": "unclassified",
+        "createfile": "data",
+        "createfinetuningjob": "management",
+        "createinference": "data",
+        "createproject": "management",
+        "createreservation": "unclassified",
+        "deletecustomizedmodel": "unclassified",
+        "deletefile": "data",
+        "deleteinference": "data",
+        "deletereservation": "unclassified",
+        "disassociatecustomizedmodel": "unclassified",
+        "getaccountdataretention": "unclassified",
+        "getcustomizedmodel": "unclassified",
+        "getfile": "data",
+        "getfinetuningjob": "management",
+        "getinference": "data",
+        "getmodel": "management",
+        "getproject": "management",
+        "getreservation": "unclassified",
+        "listcustomizedmodelassociations": "unclassified",
+        "listcustomizedmodels": "unclassified",
+        "listfiles": "data",
+        "listfinetuningjobs": "management",
+        "listmodels": "management",
+        "listprojects": "management",
+        "listreservations": "unclassified",
+        "listtagsforresource": "unclassified",
+        "putaccountdataretention": "unclassified",
+        "tagresource": "unclassified",
+        "untagresource": "unclassified",
+        "updateproject": "management",
+        "updatereservation": "unclassified",
+    },
+    "health-agent": {
+        "activatesubscription": "unclassified",
+        "batchrefillpatientpharmacyprescriptions": "unclassified",
+        "cancelappointment": "unclassified",
+        "createagent": "unclassified",
+        "createdataset": "unclassified",
+        "createdomain": "unclassified",
+        "createintegration": "unclassified",
+        "createsession": "unclassified",
+        "createsubscription": "management",
+        "deactivatesubscription": "unclassified",
+        "deleteagent": "unclassified",
+        "deletedataset": "unclassified",
+        "deletedomain": "unclassified",
+        "deleteintegration": "unclassified",
+        "getagent": "unclassified",
+        "getcareteamprovider": "unclassified",
+        "getdataset": "unclassified",
+        "getdomain": "unclassified",
+        "getdomainanalytics": "unclassified",
+        "getintegration": "unclassified",
+        "getmedicalcodingjob": "unclassified",
+        "getmedicalscribelisteningsession": "unclassified",
+        "getpatient": "unclassified",
+        "getpatientinsightsjob": "unclassified",
+        "getpractitioner": "unclassified",
+        "getsessioncontext": "unclassified",
+        "getsubscription": "unclassified",
+        "invokeagent": "unclassified",
+        "listagents": "unclassified",
+        "listappointmentslots": "unclassified",
+        "listdatasets": "unclassified",
+        "listdomains": "unclassified",
+        "listintegrations": "unclassified",
+        "listpatientappointments": "unclassified",
+        "listpatientinsurancecoverages": "unclassified",
+        "listpatientmedications": "unclassified",
+        "listpatientpharmacyprescriptions": "unclassified",
+        "listproviders": "unclassified",
+        "listsessionrecords": "unclassified",
+        "listsubscriptions": "unclassified",
+        "listtagsforresource": "unclassified",
+        "matchpatient": "unclassified",
+        "publishagent": "unclassified",
+        "rescheduleappointment": "unclassified",
+        "resetpassword": "unclassified",
+        "scheduleappointment": "unclassified",
+        "startmedicalcodingjob": "unclassified",
+        "startmedicalscribelisteningsession": "unclassified",
+        "startpatientinsightsjob": "unclassified",
+        "submitfeedback": "unclassified",
+        "submitmedicationrenewal": "unclassified",
+        "tagresource": "unclassified",
+        "untagresource": "unclassified",
+        "updateagent": "unclassified",
+        "updateintegration": "unclassified",
+        "updatesession": "unclassified",
+    },
+    "nova-act": {
+        "createact": "data",
+        "createsession": "data",
+        "createworkflowdefinition": "management",
+        "createworkflowrun": "unclassified",
+        "deleteworkflowdefinition": "management",
+        "deleteworkflowrun": "unclassified",
+        "getworkflowdefinition": "management",
+        "getworkflowrun": "management",
+        "invokeactstep": "data",
+        "listacts": "management",
+        "listmodels": "management",
+        "listsessions": "management",
+        "listworkflowdefinitions": "management",
+        "listworkflowruns": "management",
+        "updateact": "data",
+        "updateworkflowrun": "unclassified",
+    },
+}
+
+# service -> the full transcribed IAM action inventory of each
+# action-level service (audit trail + build-validation source).
+_AWS_SERVICE_ACTIONS: dict[str, frozenset[str]] = {
+    "bedrock-mantle": frozenset(
+        {
+            "archiveproject",
+            "associatecustomizedmodel",
+            "callwithbearertoken",
+            "cancelfinetuningjob",
+            "cancelinference",
+            "counttokens",
+            "createcustomizedmodel",
+            "createfile",
+            "createfinetuningjob",
+            "createinference",
+            "createproject",
+            "createreservation",
+            "deletecustomizedmodel",
+            "deletefile",
+            "deleteinference",
+            "deletereservation",
+            "disassociatecustomizedmodel",
+            "getaccountdataretention",
+            "getcustomizedmodel",
+            "getfile",
+            "getfinetuningjob",
+            "getinference",
+            "getmodel",
+            "getproject",
+            "getreservation",
+            "listcustomizedmodelassociations",
+            "listcustomizedmodels",
+            "listfiles",
+            "listfinetuningjobs",
+            "listmodels",
+            "listprojects",
+            "listreservations",
+            "listtagsforresource",
+            "putaccountdataretention",
+            "tagresource",
+            "untagresource",
+            "updateproject",
+            "updatereservation",
+        }
+    ),
+    "health-agent": frozenset(
+        {
+            "activatesubscription",
+            "batchrefillpatientpharmacyprescriptions",
+            "cancelappointment",
+            "createagent",
+            "createdataset",
+            "createdomain",
+            "createintegration",
+            "createsession",
+            "createsubscription",
+            "deactivatesubscription",
+            "deleteagent",
+            "deletedataset",
+            "deletedomain",
+            "deleteintegration",
+            "getagent",
+            "getcareteamprovider",
+            "getdataset",
+            "getdomain",
+            "getdomainanalytics",
+            "getintegration",
+            "getmedicalcodingjob",
+            "getmedicalscribelisteningsession",
+            "getpatient",
+            "getpatientinsightsjob",
+            "getpractitioner",
+            "getsessioncontext",
+            "getsubscription",
+            "invokeagent",
+            "listagents",
+            "listappointmentslots",
+            "listdatasets",
+            "listdomains",
+            "listintegrations",
+            "listpatientappointments",
+            "listpatientinsurancecoverages",
+            "listpatientmedications",
+            "listpatientpharmacyprescriptions",
+            "listproviders",
+            "listsessionrecords",
+            "listsubscriptions",
+            "listtagsforresource",
+            "matchpatient",
+            "publishagent",
+            "rescheduleappointment",
+            "resetpassword",
+            "scheduleappointment",
+            "startmedicalcodingjob",
+            "startmedicalscribelisteningsession",
+            "startpatientinsightsjob",
+            "submitfeedback",
+            "submitmedicationrenewal",
+            "tagresource",
+            "untagresource",
+            "updateagent",
+            "updateintegration",
+            "updatesession",
+        }
+    ),
+    "nova-act": frozenset(
+        {
+            "createact",
+            "createsession",
+            "createworkflowdefinition",
+            "createworkflowrun",
+            "deleteworkflowdefinition",
+            "deleteworkflowrun",
+            "getworkflowdefinition",
+            "getworkflowrun",
+            "invokeactstep",
+            "listacts",
+            "listmodels",
+            "listsessions",
+            "listworkflowdefinitions",
+            "listworkflowruns",
+            "updateact",
+            "updateworkflowrun",
+        }
+    ),
+}
+
 # Services where EVERY action outside ``_AWS_DATA_EVENT_ACTIONS`` is a
 # management event (the service documents a closed data-event set):
 # Lambda logs only Invoke-family calls as data events; the EBS direct APIs
@@ -1294,6 +1557,13 @@ def classify_aws_data_plane(action: str, *, registry: ActionRegistry | None = No
     ``"unclassified"`` (the classifier cannot verify either claim; callers
     must default it to the safe side).
 
+    A service listed in ``_AWS_ACTION_LEVEL_SERVICES`` is classified per
+    action from its transcribed CloudTrail split (see
+    ``scripts/build_engine_tables.py``): documented data events return
+    ``"data"``, documented management events return ``"management"``, and
+    anything outside the transcribed inventory returns ``"unclassified"`` —
+    a brand-new AWS action can never widen the removable side.
+
     ``management`` — the removable side — requires POSITIVE verification
     from the transcribed CloudTrail tables: either the action itself is a
     documented management event, its service documents a closed data-event
@@ -1308,6 +1578,15 @@ def classify_aws_data_plane(action: str, *, registry: ActionRegistry | None = No
     service, sep, name = action.strip().lower().partition(":")
     if not sep or not name:
         return _UNCLASSIFIED
+    # Opt-in action-level layer (services whose per-action CloudTrail split
+    # is transcribed): authoritative for every action in the transcribed
+    # inventory — documented data events stay unknown-usage-protected,
+    # documented management events are removable — and anything OUTSIDE the
+    # inventory (a brand-new AWS action, a hallucination) stays
+    # unclassified. Inventory presence alone never proves management: the
+    # IAM-only bedrock-mantle / Nova Act actions prove that gap is real.
+    if service in _AWS_ACTION_LEVEL_SERVICES:
+        return _AWS_ACTION_LEVEL_CLASSIFICATIONS.get(service, {}).get(name, _UNCLASSIFIED)
     if service in _AWS_DATA_EVENT_SERVICES:
         if name in _AWS_DATA_EVENT_ACTIONS.get(service, _EMPTY):
             return _DATA
