@@ -648,13 +648,43 @@ class TestDataPlaneClassification:
         assert "bedrock-mantle" in _AWS_DATA_EVENT_SERVICES
         assert "bedrock-mantle" not in _AWS_MANAGEMENT_ONLY_SERVICES
 
-    def test_bedrock_mantle_actions_are_not_management(self):
-        """Service-level mapping only: no per-action table is transcribed
-        for bedrock-mantle yet, so every action stays unclassified (the
-        safe side) instead of management."""
+    def test_bedrock_mantle_action_level_classification(self):
+        """The per-action CloudTrail split is transcribed for bedrock-mantle
+        (bedrock user guide, 'Monitor bedrock-mantle API calls'): 9
+        inference/file operations are data events, 11 model/fine-tuning/
+        project operations are management events. The IAM-only extras
+        (customized model, reservation, retention, tagging, bearer token)
+        have no documented category, so they stay unclassified — inventory
+        presence alone never proves management."""
         from permtrim.analyzer.engine import classify_aws_data_plane
 
-        assert classify_aws_data_plane("bedrock-mantle:CreateInference") == "unclassified"
+        for action in (
+            "bedrock-mantle:CreateInference",
+            "bedrock-mantle:GetInference",
+            "bedrock-mantle:CancelInference",
+            "bedrock-mantle:DeleteInference",
+            "bedrock-mantle:CountTokens",
+            "bedrock-mantle:ListFiles",
+            "bedrock-mantle:CreateFile",
+            "bedrock-mantle:GetFile",
+            "bedrock-mantle:DeleteFile",
+        ):
+            assert classify_aws_data_plane(action) == "data", action
+        for action in (
+            "bedrock-mantle:ListModels",
+            "bedrock-mantle:GetModel",
+            "bedrock-mantle:CreateFineTuningJob",
+            "bedrock-mantle:CreateProject",
+            "bedrock-mantle:ArchiveProject",
+        ):
+            assert classify_aws_data_plane(action) == "management", action
+        for action in (
+            "bedrock-mantle:CreateReservation",
+            "bedrock-mantle:CreateCustomizedModel",
+            "bedrock-mantle:TagResource",
+            "bedrock-mantle:CallWithBearerToken",
+        ):
+            assert classify_aws_data_plane(action) == "unclassified", action
 
     def test_health_agent_is_data_event_service(self):
         """P0 regression (Amazon Connect Health / HealthAgent): the doc
@@ -671,19 +701,26 @@ class TestDataPlaneClassification:
         assert "health-agent" in _AWS_DATA_EVENT_SERVICES
         assert "health-agent" not in _AWS_MANAGEMENT_ONLY_SERVICES
 
-    def test_health_agent_actions_are_not_management(self):
-        """Service-level mapping only: no per-action table is transcribed
-        for health-agent yet, so every action stays unclassified (the safe
-        side) instead of management."""
+    def test_health_agent_create_subscription_is_management(self):
+        """Amazon Connect Health's CloudTrail example shows CreateSubscription
+        with ``eventCategory: Management`` / ``managementEvent: true`` even
+        though AWS::HealthAgent::Subscription is a data-event resource type —
+        the resource type alone does not classify the action. Only
+        CreateSubscription is documented so far: the rest of the transcribed
+        inventory (and anything AWS adds later) stays unclassified, never
+        management."""
         from permtrim.analyzer.engine import classify_aws_data_plane
 
-        assert classify_aws_data_plane("health-agent:CreateSubscription") == "unclassified"
+        assert classify_aws_data_plane("health-agent:CreateSubscription") == "management"
         for action in (
-            "health-agent:GetDomain",
-            "health-agent:GetSession",
-            "health-agent:DeleteIntegration",
+            "health-agent:GetDomainAnalytics",
+            "health-agent:StartMedicalCodingJob",
+            "health-agent:CreateDomain",
+            "health-agent:ActivateSubscription",
         ):
             assert classify_aws_data_plane(action) == "unclassified", action
+        # a brand-new action AWS has not documented yet
+        assert classify_aws_data_plane("health-agent:BrandNewFutureAction") == "unclassified"
 
     def test_nova_act_is_data_event_service(self):
         """P0 regression (Nova Act): AWS::NovaAct::WorkflowDefinition and
@@ -700,23 +737,38 @@ class TestDataPlaneClassification:
         assert "nova-act" in _AWS_DATA_EVENT_SERVICES
         assert "nova-act" not in _AWS_MANAGEMENT_ONLY_SERVICES
 
-    def test_nova_act_actions_are_not_management(self):
-        """Service-level mapping only: no per-action table is transcribed
-        for nova-act yet, so every action stays unclassified (the safe
-        side) instead of management — including the documented data-event
-        calls CreateAct / CreateSession / UpdateAct / InvokeActStep."""
+    def test_nova_act_action_level_classification(self):
+        """Nova Act's CloudTrail page splits the service: CreateSession,
+        CreateAct, UpdateAct, InvokeActStep are data events; nine
+        workflow-definition/run/list operations are management events. The
+        IAM reference adds CreateWorkflowRun, DeleteWorkflowRun and
+        UpdateWorkflowRun with NO CloudTrail category — they stay
+        unclassified instead of being guessed into the removable side."""
         from permtrim.analyzer.engine import classify_aws_data_plane
 
         for action in (
-            "nova-act:CreateAct",
             "nova-act:CreateSession",
+            "nova-act:CreateAct",
             "nova-act:UpdateAct",
             "nova-act:InvokeActStep",
+        ):
+            assert classify_aws_data_plane(action) == "data", action
+        for action in (
+            "nova-act:CreateWorkflowDefinition",
+            "nova-act:GetWorkflowRun",
+            "nova-act:ListWorkflowRuns",
+            "nova-act:DeleteWorkflowDefinition",
+        ):
+            assert classify_aws_data_plane(action) == "management", action
+        for action in (
+            "nova-act:CreateWorkflowRun",
+            "nova-act:DeleteWorkflowRun",
+            "nova-act:UpdateWorkflowRun",
         ):
             assert classify_aws_data_plane(action) == "unclassified", action
 
     def test_engine_tables_match_generated_artifact(self):
-        """CI gap fix: engine.py embeds the two service sets the build
+        """CI gap fix: engine.py embeds the five service tables the build
         script emits into scripts/engine_tables.generated.py, and until now
         nothing verified the two stay identical — a hand-edit of either
         side could drift silently. CI runs scripts/build_engine_tables.py
@@ -734,3 +786,168 @@ class TestDataPlaneClassification:
         spec.loader.exec_module(mod)
         assert engine._AWS_DATA_EVENT_SERVICES == mod._AWS_DATA_EVENT_SERVICES
         assert engine._AWS_MANAGEMENT_ONLY_SERVICES == mod._AWS_MANAGEMENT_ONLY_SERVICES
+        assert engine._AWS_ACTION_LEVEL_SERVICES == mod._AWS_ACTION_LEVEL_SERVICES
+        assert engine._AWS_ACTION_LEVEL_CLASSIFICATIONS == mod._AWS_ACTION_LEVEL_CLASSIFICATIONS
+        assert engine._AWS_SERVICE_ACTIONS == mod._AWS_SERVICE_ACTIONS
+
+    def test_action_level_data_grant_without_usage_is_unknown_usage(self):
+        """End-to-end safety property: a granted, DOCUMENTED data-event
+        action (bedrock-mantle:CreateInference — invisible to lookup_events)
+        with zero usage records must land in unknown_usage_actions, never in
+        unused. Before the action-level layer it classified as unclassified
+        (still safe); before the service-level fix it was 'management' and
+        removable."""
+        from datetime import datetime, timezone
+
+        from permtrim.analyzer.engine import Analyzer
+        from permtrim.models.activity import ActivityLog, ActivityWindow, UsageSummary
+        from permtrim.models.iam import IaMSnapshot, IAMUser
+
+        now = datetime.now(timezone.utc)
+        doc = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": ["bedrock-mantle:CreateInference"], "Resource": "*"}],
+        }
+        iam = IaMSnapshot(
+            account_id="1",
+            collector_identity_arn="arn",
+            collected_at=now,
+            users=[IAMUser(name="u", arn="arn:u", inline_policies={"mantle": doc})],
+            roles=[],
+            groups=[],
+            policies={},
+        )
+        activity = ActivityLog(
+            window=ActivityWindow(start=now, end=now, lookback_days=30),
+            events=[],
+            usage={("user", "u"): UsageSummary(action_counts={})},
+        )
+        report = Analyzer().analyze(iam, activity)
+        finding = next(f for f in report.findings if f.name == "u")
+        assert finding.unknown_usage_actions == ["bedrock-mantle:createinference"]
+        assert finding.unused_count == 0
+        granted = {g.action: g for g in finding.granted_actions}
+        assert granted["bedrock-mantle:createinference"].data_plane is True
+
+    def test_action_level_management_grant_unused_is_removed(self):
+        """The flip side of the feature: health-agent:CreateSubscription is a
+        documented management event (Connect Health's own CloudTrail
+        example) — visible to lookup_events — so an unused grant of it is
+        confirmed excess (unused_count 1), not manual-review noise."""
+        from datetime import datetime, timezone
+
+        from permtrim.analyzer.engine import Analyzer
+        from permtrim.models.activity import ActivityLog, ActivityWindow, UsageSummary
+        from permtrim.models.iam import IaMSnapshot, IAMUser
+
+        now = datetime.now(timezone.utc)
+        doc = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {"Effect": "Allow", "Action": ["health-agent:CreateSubscription"], "Resource": "*"}
+            ],
+        }
+        iam = IaMSnapshot(
+            account_id="1",
+            collector_identity_arn="arn",
+            collected_at=now,
+            users=[IAMUser(name="u", arn="arn:u", inline_policies={"health": doc})],
+            roles=[],
+            groups=[],
+            policies={},
+        )
+        activity = ActivityLog(
+            window=ActivityWindow(start=now, end=now, lookback_days=30),
+            events=[],
+            usage={("user", "u"): UsageSummary(action_counts={})},
+        )
+        report = Analyzer().analyze(iam, activity)
+        finding = next(f for f in report.findings if f.name == "u")
+        assert finding.unknown_usage_actions == []
+        assert finding.unclassified_actions == []
+        assert finding.unused_count == 1
+
+    def test_action_level_unclassified_grant_is_protected(self):
+        """nova-act:CreateWorkflowRun exists in the IAM reference but no
+        CloudTrail doc puts it in a category — it must stay unknown-usage /
+        unclassified (never unused), the fail-closed default."""
+        from datetime import datetime, timezone
+
+        from permtrim.analyzer.engine import Analyzer
+        from permtrim.models.activity import ActivityLog, ActivityWindow, UsageSummary
+        from permtrim.models.iam import IaMSnapshot, IAMUser
+
+        now = datetime.now(timezone.utc)
+        doc = {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": ["nova-act:CreateWorkflowRun"], "Resource": "*"}],
+        }
+        iam = IaMSnapshot(
+            account_id="1",
+            collector_identity_arn="arn",
+            collected_at=now,
+            users=[IAMUser(name="u", arn="arn:u", inline_policies={"nova": doc})],
+            roles=[],
+            groups=[],
+            policies={},
+        )
+        activity = ActivityLog(
+            window=ActivityWindow(start=now, end=now, lookback_days=30),
+            events=[],
+            usage={("user", "u"): UsageSummary(action_counts={})},
+        )
+        report = Analyzer().analyze(iam, activity)
+        finding = next(f for f in report.findings if f.name == "u")
+        assert finding.unused_count == 0
+        assert finding.unclassified_actions == ["nova-act:createworkflowrun"]
+        granted = {g.action: g for g in finding.granted_actions}
+        assert granted["nova-act:createworkflowrun"].data_plane is True
+
+    def test_action_level_tsvs_are_consistent(self):
+        """The two action-level TSVs were inert data until the build script
+        learned to consume them, so a bad row could land silently. These are
+        the build's fail-closed checks re-run in the test matrix: unique
+        service+action rows, lowercase actions, a valid classification on
+        every inventory row, filled access levels, event-source URLs only
+        where a category is documented, every action-level service inside
+        the resource-type mapping, and the data-event TSV equal to the
+        inventory's classification=data rows per service."""
+        from permtrim.analyzer.engine import _AWS_DATA_EVENT_SERVICES
+
+        root = Path(__file__).resolve().parents[1]
+        doc_lines = (
+            (root / "data" / "aws_data_event_actions_2026-11.tsv").read_text(encoding="utf-8").splitlines()
+        )
+        inv_lines = (
+            (root / "data" / "aws_service_actions_2026-11.tsv").read_text(encoding="utf-8").splitlines()
+        )
+
+        doc_data: dict[str, set[str]] = {}
+        seen: set[tuple[str, str]] = set()
+        for line in doc_lines[1:]:
+            svc, action, _src = line.split("\t")
+            assert (svc, action) not in seen, line
+            seen.add((svc, action))
+            assert action == action.lower(), line
+            doc_data.setdefault(svc, set()).add(action)
+
+        inventory: dict[str, dict[str, str]] = {}
+        for line in inv_lines[1:]:
+            svc, action, cls, level, _iam_url, ev_url = line.split("\t")
+            assert action == action.lower(), line
+            assert cls in {"data", "management", "unclassified"}, line
+            assert level, line
+            if cls == "unclassified":
+                assert ev_url == "", line
+            else:
+                assert ev_url, line
+            assert action not in inventory.get(svc, {}), line
+            inventory.setdefault(svc, {})[action] = cls
+
+        for svc in inventory:
+            assert svc in _AWS_DATA_EVENT_SERVICES, svc
+        for svc in set(doc_data) | set(inventory):
+            inv = inventory.get(svc, {})
+            assert doc_data.get(svc, set()) <= set(inv), svc
+            data_rows = {a for a, c in inv.items() if c == "data"}
+            assert data_rows == doc_data.get(svc, set()), svc
