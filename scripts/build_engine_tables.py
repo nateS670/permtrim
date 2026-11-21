@@ -6,6 +6,11 @@ Sources:
       transcribed 2026-11-20 from
       https://docs.aws.amazon.com/awscloudtrail/latest/userguide/logging-data-events-with-cloudtrail.html
   data/iam_dataset_prefixes.txt — the 445 IAM service prefixes in the bundled dataset
+  data/aws_data_event_actions_2026-11.tsv — the per-action CloudTrail data-event split of
+      the new-generation services (service | action | source_url), hand-transcribed 2026-11
+  data/aws_service_actions_2026-11.tsv — the full IAM action inventory of those services
+      with the per-action CloudTrail classification (service | action | classification |
+      access_level | iam_source_url | event_source_url)
 
 Mapping policy (row -> IAM prefix):
   - explicit dict below, hand-reviewed row by row;
@@ -40,14 +45,17 @@ from pathlib import Path
 
 TSV = Path("data/cloudtrail_data_events_2026-11.tsv")
 PREFIXES = Path("data/iam_dataset_prefixes.txt")
+ACTION_TSV = Path("data/aws_data_event_actions_2026-11.tsv")
+INVENTORY_TSV = Path("data/aws_service_actions_2026-11.tsv")
 
-for _p in (TSV, PREFIXES):
+for _p in (TSV, PREFIXES, ACTION_TSV, INVENTORY_TSV):
     if not _p.exists():
         raise SystemExit(
             f"Girdi dosyası eksik: {_p}\n"
             "Bu dosyalar repo kökündeki data/ dizininde commit edilmelidir\n"
             "( CloudTrail 'Logging data events' resource-type tablosunun\n"
-            "  2026-11 transkripsiyonu ve dataset'in IAM prefix listesi ).\n"
+            "  2026-11 transkripsiyonu, dataset'in IAM prefix listesi ve\n"
+            "  yeni nesil servislerin action-level ayrımı ).\n"
             "Repo kökünden çalıştırın: python scripts/build_engine_tables.py"
         )
 
@@ -456,6 +464,90 @@ if stale:
     print("UYARI — artık şüphe üretmeyen incelenmiş istisnalar (REVIEWED_EXCEPTIONS'tan çıkarın):", stale)
 
 
+# --- action-level tables (opt-in): the per-action CloudTrail split of the
+# new-generation services. Every check here fails loudly — a silent
+# inconsistency would feed wrong classifications into the auto-tightening
+# path. classification is authoritative per action; access_level is
+# informational only (the IAM reference's access level says nothing about
+# the CloudTrail event category).
+VALID_CLASSIFICATIONS = {"data", "management", "unclassified"}
+
+
+def read_tsv(path: Path, ncols: int) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        cells = [c.strip() for c in line.split("\t")]
+        if lineno == 1 and cells and cells[0] == "service":
+            continue  # header
+        if len(cells) != ncols:
+            raise SystemExit(f"HATA — {path}:{lineno}: {ncols} sütun bekleniyordu, {len(cells)} var")
+        rows.append(cells)
+    return rows
+
+
+doc_data_rows = read_tsv(ACTION_TSV, 3)
+doc_data: dict[str, set[str]] = {}
+seen_doc: set[tuple[str, str]] = set()
+for svc, action, _src in doc_data_rows:
+    if action != action.lower():
+        raise SystemExit(f"HATA — {ACTION_TSV}: action küçük harf olmalı: {action}")
+    if (svc, action) in seen_doc:
+        raise SystemExit(f"HATA — {ACTION_TSV}: tekrarlanan satır: {svc}:{action}")
+    seen_doc.add((svc, action))
+    doc_data.setdefault(svc, set()).add(action)
+
+inv_rows = read_tsv(INVENTORY_TSV, 6)
+inventory: dict[str, dict[str, str]] = {}
+for svc, action, cls, _lvl, _iam_url, _ev_url in inv_rows:
+    if cls not in VALID_CLASSIFICATIONS:
+        raise SystemExit(
+            f"HATA — {INVENTORY_TSV}: geçersiz classification {cls!r} "
+            f"(satır {svc}:{action}); geçerli: {sorted(VALID_CLASSIFICATIONS)}"
+        )
+    if action != action.lower():
+        raise SystemExit(f"HATA — {INVENTORY_TSV}: action küçük harf olmalı: {action}")
+    if action in inventory.get(svc, {}):
+        raise SystemExit(f"HATA — {INVENTORY_TSV}: tekrarlanan satır: {svc}:{action}")
+    inventory.setdefault(svc, {})[action] = cls
+
+action_level_services = sorted(inventory)
+
+# an action-level service must be a mapped data-event service FIRST: the
+# resource-type rows already proved the service contributes data events
+not_data = [s for s in action_level_services if s not in data_services]
+if not_data:
+    raise SystemExit(
+        f"HATA — envanterdeki servisler data-event kümesi dışında: {not_data}. "
+        "Önce resource-type satırlarını ROW_MAP'te eşleyin."
+    )
+
+# the data-event TSV and the inventory's classification=data rows must be
+# the same set per service, and every documented action must exist in the
+# inventory — catches a typo before it becomes a silent misclassification
+for svc in sorted(set(doc_data) | set(inventory)):
+    inv_set = inventory.get(svc, {})
+    inv_data = {a for a, c in inv_set.items() if c == "data"}
+    doc = doc_data.get(svc, set())
+    unknown = doc - set(inv_set)
+    if unknown:
+        raise SystemExit(f"HATA — {svc}: data-event TSV aksiyonları envanterde yok: {sorted(unknown)}")
+    if inv_data != doc:
+        raise SystemExit(
+            f"HATA — {svc}: envanter classification=data {sorted(inv_data)} != data-event TSV {sorted(doc)}"
+        )
+
+action_level_classifications = {s: dict(inventory[s]) for s in action_level_services}
+service_actions = {s: frozenset(inventory[s]) for s in action_level_services}
+print(
+    f"action-level: {len(action_level_services)} servis, "
+    f"{sum(len(v) for v in inventory.values())} envanter satırı "
+    f"({sum(1 for v in inventory.values() for c in v.values() if c == 'data')} data / "
+    f"{sum(1 for v in inventory.values() for c in v.values() if c == 'management')} management)"
+)
+
+
 # --- emit engine.py code
 def fmt_frozenset(name: str, items: set[str], comment: str) -> str:
     # one item per line: matches `ruff format` output for frozenset literals
@@ -466,6 +558,31 @@ def fmt_frozenset(name: str, items: set[str], comment: str) -> str:
         lines.append(f'        "{it}",')
     lines.append("    }")
     lines.append(")")
+    return "\n".join(lines)
+
+
+def fmt_nested_dict(name: str, table: dict[str, dict[str, str]], comment: str) -> str:
+    # one entry per line with magic trailing commas: matches `ruff format`
+    lines = [comment, f"{name}: dict[str, dict[str, str]] = {{"]
+    for svc in sorted(table):
+        lines.append(f'    "{svc}": {{')
+        for act in sorted(table[svc]):
+            lines.append(f'        "{act}": "{table[svc][act]}",')
+        lines.append("    },")
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def fmt_service_frozensets(name: str, table: dict[str, frozenset[str]], comment: str) -> str:
+    lines = [comment, f"{name}: dict[str, frozenset[str]] = {{"]
+    for svc in sorted(table):
+        lines.append(f'    "{svc}": frozenset(')
+        lines.append("        {")
+        for act in sorted(table[svc]):
+            lines.append(f'            "{act}",')
+        lines.append("        }")
+        lines.append("    ),")
+    lines.append("}")
     return "\n".join(lines)
 
 
@@ -488,6 +605,37 @@ out.append(
         "# contributing NO data events (absent from the complete resource-type\n"
         "# list). Every action of these is a management event: visible to\n"
         "# lookup_events, so absence of usage is real evidence of non-use.",
+    )
+)
+out.append("")
+out.append(
+    fmt_frozenset(
+        "_AWS_ACTION_LEVEL_SERVICES",
+        set(action_level_services),
+        "# Services whose CloudTrail split is transcribed PER ACTION (opt-in\n"
+        "# layer): the classifier consults their action-level tables before the\n"
+        "# service-level sets above. Actions outside the transcribed inventory\n"
+        "# stay unclassified — inventory presence alone never proves management.",
+    )
+)
+out.append("")
+out.append(
+    fmt_nested_dict(
+        "_AWS_ACTION_LEVEL_CLASSIFICATIONS",
+        action_level_classifications,
+        "# service -> {lowercase action -> data | management | unclassified},\n"
+        "# from data/aws_service_actions_2026-11.tsv (full IAM inventory with\n"
+        "# the per-action CloudTrail classification) +\n"
+        "# data/aws_data_event_actions_2026-11.tsv (documented data events).",
+    )
+)
+out.append("")
+out.append(
+    fmt_service_frozensets(
+        "_AWS_SERVICE_ACTIONS",
+        service_actions,
+        "# service -> the full transcribed IAM action inventory of each\n"
+        "# action-level service (audit trail + build-validation source).",
     )
 )
 content = "\n".join(out) + "\n"
