@@ -29,6 +29,19 @@ jobs:
       - name: Mypy (static types)
         run: mypy
 
+  tables:
+    name: Generated tables up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rebuild engine tables from the doc TSV (--check, no write)
+        run: python scripts/build_engine_tables.py --check
+
   test:
     name: Tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
