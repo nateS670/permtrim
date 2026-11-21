@@ -12,7 +12,18 @@ Mapping policy (row -> IAM prefix):
   - rows whose data events are not authorized by any IAM prefix in the
     dataset map to None (they cannot appear in an expandable policy grant);
   - the script FAILS if the TSV contains a row missing from the dict, and
-    warns if a mapped prefix is absent from the dataset.
+    warns if a mapped prefix is absent from the dataset;
+  - a None row whose prefix DOES exist in the dataset is a silent bug: the
+    prefix drops into management-only (the dangerous direction), so the
+    residual scan below FAILS the build on any suspect prefix that is not
+    in the reviewed-exceptions list (REVIEWED_EXCEPTIONS, each with its
+    reason), and warns when an exception is no longer a suspect.
+
+Run modes:
+  python scripts/build_engine_tables.py          regenerate + write the artifact
+  python scripts/build_engine_tables.py --check  CI mode: verify the committed
+      scripts/engine_tables.generated.py is exactly what the current inputs
+      produce — nothing is written, exit 1 on drift.
 
 Safety direction: a data-event service WRONGLY ABSENT from the generated
 _AWS_DATA_EVENT_SERVICES would land in _AWS_MANAGEMENT_ONLY_SERVICES (the
@@ -24,6 +35,7 @@ management-only prefix.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 TSV = Path("data/cloudtrail_data_events_2026-11.tsv")
@@ -93,7 +105,7 @@ ROW_MAP: dict[str, str | None] = {
     "BedrockAgentCore::WebSearch": "bedrock-agentcore",
     "BedrockAgentCore::WorkloadIdentity": "bedrock-agentcore",
     "BedrockAgentCore::WorkloadIdentityDirectory": "bedrock-agentcore",
-    "BedrockMantle::Project": None,
+    "BedrockMantle::Project": "bedrock-mantle",  # CreateInference data events; prefix is in the dataset
     "BedrockWebSearch::Tool": None,
     "B2BI::Transformer": "b2bi",
     "Cassandra::Stream": "cassandra",
@@ -152,11 +164,11 @@ ROW_MAP: dict[str, str | None] = {
     "GreengrassV2::Deployment": "greengrass",
     "GuardDuty::Detector": "guardduty",
     "GuardDuty::MalwareScan": "guardduty",
-    "HealthAgent::Domain": None,
-    "HealthAgent::Integration": None,
-    "HealthAgent::PatientInsightsJob": None,
-    "HealthAgent::Session": None,
-    "HealthAgent::Subscription": None,
+    "HealthAgent::Domain": "health-agent",  # Amazon Connect Health data plane
+    "HealthAgent::Integration": "health-agent",  # Amazon Connect Health data plane
+    "HealthAgent::PatientInsightsJob": "health-agent",  # Amazon Connect Health data plane
+    "HealthAgent::Session": "health-agent",  # Amazon Connect Health data plane
+    "HealthAgent::Subscription": "health-agent",  # Amazon Connect Health data plane
     "HealthLake::DataTransformationProfile": "healthlake",
     "IoT::Certificate": "iot",
     "IoT::Thing": "iot",
@@ -192,8 +204,8 @@ ROW_MAP: dict[str, str | None] = {
     "NetworkFlowMonitor::Monitor": "networkflowmonitor",
     "NetworkFlowMonitor::PerformanceMonitor": "networkflowmonitor",
     "NetworkFlowMonitor::Scope": "networkflowmonitor",
-    "NovaAct::WorkflowDefinition": None,
-    "NovaAct::WorkflowRun": None,
+    "NovaAct::WorkflowDefinition": "nova-act",  # CreateAct / InvokeActStep data events
+    "NovaAct::WorkflowRun": "nova-act",  # CreateAct / InvokeActStep data events
     "One::UKey": "one",
     "One::User": "one",
     "Osm::Space": None,
@@ -403,9 +415,45 @@ for p in sorted(management_only):
             continue
         break
 
+# Prefixes the scan legitimately flags, each manually reviewed against the
+# doc table and the IAM dataset (2026-11): the camel-cased match comes from
+# a row that maps to a DIFFERENT prefix, or the service truly has no data
+# events. Any suspect NOT in this list means a missed mapping — the build
+# fails, so a wrong management-only classification cannot ship silently
+# (the direction that makes invisible data-plane usage look removable).
+REVIEWED_EXCEPTIONS: dict[str, str] = {
+    "account": ("Account::ControlledDomain is an internal OMW service, not the account management APIs"),
+    "payments": ("BedrockAgentCore::Payments maps to bedrock-agentcore, not the payments service"),
+    "profile": (
+        "…Profile rows map to codewhisperer / transform or to None-internal services, not the profile prefix"
+    ),
+    "redshift": (
+        "Redshift::Cluster is the Redshift Data API row (redshift-data); redshift itself is control plane"
+    ),
+    "transform-custom": "TransformCustom:: rows map to the transform prefix",
+}
+
+unexpected = [s for s in suspects if s not in REVIEWED_EXCEPTIONS]
+stale = sorted(e for e in REVIEWED_EXCEPTIONS if e not in suspects)
+
 print(f"doc satırları: {len(rts)}, map edilen: {len(data_services)} servis")
 print(f"management-only (dataset - data-event): {len(management_only)} servis")
-print(f"residual şüpheler (doc'ta hâlâ geçen management-only prefix): {suspects or 'YOK'}")
+if suspects:
+    print("  şüpheler:", ", ".join(suspects))
+print(
+    f"residual şüpheler: incelenmiş istisna {len(suspects) - len(unexpected)}, incelenmemiş {len(unexpected)}"
+)
+if unexpected:
+    print("HATA — incelenmemiş residual şüpheler: management-only ama doc tablosunda geçiyor (tehlike yönü):")
+    for s in unexpected:
+        print("  ", s)
+    print(
+        "Eksik bir ROW_MAP eşleştirmesi mi var, yoksa gerçekten zararsız mı? "
+        "Zararsızsa gerekçesiyle REVIEWED_EXCEPTIONS'a ekleyin."
+    )
+    raise SystemExit(1)
+if stale:
+    print("UYARI — artık şüphe üretmeyen incelenmiş istisnalar (REVIEWED_EXCEPTIONS'tan çıkarın):", stale)
 
 
 # --- emit engine.py code
@@ -442,6 +490,27 @@ out.append(
         "# lookup_events, so absence of usage is real evidence of non-use.",
     )
 )
-Path("scripts/engine_tables.generated.py").write_text("\n".join(out) + "\n", encoding="utf-8")
-print("\nTablo kodu scripts/engine_tables.generated.py dosyasına yazıldı.")
+content = "\n".join(out) + "\n"
+GEN = Path("scripts/engine_tables.generated.py")
+
+if "--check" in sys.argv[1:]:
+    # CI mode: verify the committed artifact is exactly what the current
+    # inputs produce — nothing is written, exit 1 on drift. Catches a TSV
+    # or ROW_MAP change landing without regenerating the tables.
+    if not GEN.exists():
+        raise SystemExit(
+            "HATA — scripts/engine_tables.generated.py yok.\n"
+            "Bir kez --check'sız çalıştırıp üretilen dosyayı commit edin."
+        )
+    committed = GEN.read_text(encoding="utf-8")
+    if committed != content:
+        raise SystemExit(
+            "HATA — scripts/engine_tables.generated.py güncel değil.\n"
+            "'python scripts/build_engine_tables.py' çalıştırıp üretilen "
+            "dosyayı commit edin."
+        )
+    print("\nOK — engine_tables.generated.py mevcut girdilerle birebir güncel.")
+else:
+    GEN.write_text(content, encoding="utf-8")
+    print("\nTablo kodu scripts/engine_tables.generated.py dosyasına yazıldı.")
 print("data-event servisleri:", sorted(data_services))
