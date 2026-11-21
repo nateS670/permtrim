@@ -1,0 +1,14 @@
+service	action	source_url
+bedrock-mantle	createinference	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	getinference	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	cancelinference	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	deleteinference	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	counttokens	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	listfiles	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	createfile	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	getfile	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	deletefile	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+nova-act	createsession	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	createact	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	updateact	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	invokeactstep	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
