@@ -585,7 +585,7 @@ class TestDataPlaneClassification:
         """Services whose data events exist but whose per-action split is
         not transcribed yet (Glue, SageMaker, Timestream, ...) classify
         every action as unclassified — never as silently-removable
-        management. This is the fail-closed default for the 96-service
+        management. This is the fail-closed default for the 97-service
         data-event table."""
         from permtrim.analyzer.engine import classify_aws_data_plane
 
@@ -595,5 +595,39 @@ class TestDataPlaneClassification:
             "timestream:select",
             "kinesis:putrecord",
             "states:startexecution",
+        ):
+            assert classify_aws_data_plane(action) == "unclassified", action
+
+    def test_greengrass_is_data_event_service(self):
+        """P0 regression (Greengrass): the CloudTrail data-event table lists
+        AWS::GreengrassV2::ComponentVersion and AWS::GreengrassV2::Deployment,
+        and IoT Greengrass V2's IAM prefix is plain ``greengrass`` — the two
+        ROW_MAP rows must map to it, never to None. Before the fix the
+        service sat in _AWS_MANAGEMENT_ONLY_SERVICES (the None comment
+        wrongly claimed the prefix was missing from the dataset), so
+        greengrass:GetComponentVersionArtifact — a data event invisible to
+        lookup_events — could be flagged as unused and auto-removed."""
+        from permtrim.analyzer.engine import (
+            _AWS_DATA_EVENT_SERVICES,
+            _AWS_MANAGEMENT_ONLY_SERVICES,
+        )
+
+        assert "greengrass" in _AWS_DATA_EVENT_SERVICES
+        assert "greengrass" not in _AWS_MANAGEMENT_ONLY_SERVICES
+
+    def test_greengrass_actions_are_not_management(self):
+        """The Greengrass data-event mapping is service-level only: no
+        per-action table is transcribed, so every greengrass action stays
+        unclassified (the safe side) instead of management. The artifact
+        download call of a core device is the canonical LookupEvents-blind
+        case: it must never look unused/removable."""
+        from permtrim.analyzer.engine import classify_aws_data_plane
+
+        assert classify_aws_data_plane("greengrass:GetComponentVersionArtifact") == "unclassified"
+        for action in (
+            "greengrass:GetDeployment",
+            "greengrass:GetCoreDevice",
+            "greengrass:CreateDeployment",
+            "greengrass:GetConnectivityInfo",
         ):
             assert classify_aws_data_plane(action) == "unclassified", action
