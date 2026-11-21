@@ -29,6 +29,16 @@ from pathlib import Path
 TSV = Path("data/cloudtrail_data_events_2026-11.tsv")
 PREFIXES = Path("data/iam_dataset_prefixes.txt")
 
+for _p in (TSV, PREFIXES):
+    if not _p.exists():
+        raise SystemExit(
+            f"Girdi dosyası eksik: {_p}\n"
+            "Bu dosyalar repo kökündeki data/ dizininde commit edilmelidir\n"
+            "( CloudTrail 'Logging data events' resource-type tablosunun\n"
+            "  2026-11 transkripsiyonu ve dataset'in IAM prefix listesi ).\n"
+            "Repo kökünden çalıştırın: python scripts/build_engine_tables.py"
+        )
+
 # resources.type (without AWS::) -> IAM prefix in the bundled dataset, or None
 ROW_MAP: dict[str, str | None] = {
     "Abuse::Report": None,
@@ -138,8 +148,8 @@ ROW_MAP: dict[str, str | None] = {
     "GeoPlaces::Provider": "geo-places",
     "GeoRoutes::Provider": "geo-routes",
     "Glue::Table": "glue",
-    "GreengrassV2::ComponentVersion": None,  # prefix not in bundled dataset
-    "GreengrassV2::Deployment": None,
+    "GreengrassV2::ComponentVersion": "greengrass",  # IoT Greengrass V2 IAM prefix
+    "GreengrassV2::Deployment": "greengrass",
     "GuardDuty::Detector": "guardduty",
     "GuardDuty::MalwareScan": "guardduty",
     "HealthAgent::Domain": None,
@@ -370,18 +380,28 @@ management_only = dataset - data_services
 # --- residual safety scan: a management-only prefix whose camel-cased form
 # appears as a word inside any resources.type of the doc table means a
 # missed mapping (the dangerous direction: a data-event service silently
-# classified as removable management).
+# classified as removable management). Versioned service names strip their
+# trailing version token (GreengrassV2 -> greengrass, EventsV2 -> events,
+# KafkaConnectV2 -> kafkaconnect), because the IAM prefix never carries it.
 def camel(prefix: str) -> str:
     return "".join(w.capitalize() for w in prefix.split("-"))
+
+
+def versionless(rt_word: str) -> str:
+    return re.sub(r"V\d+$", "", rt_word)
 
 
 suspects = []
 for p in sorted(management_only):
     c = camel(p)
     for rt, _raw in rt_rows:
-        if re.search(rf"(::|^)\b{re.escape(c)}\b(::|$)", rt):
-            suspects.append(p)
-            break
+        for word in rt.split("::"):
+            if versionless(word) == c:
+                suspects.append(p)
+                break
+        else:
+            continue
+        break
 
 print(f"doc satırları: {len(rts)}, map edilen: {len(data_services)} servis")
 print(f"management-only (dataset - data-event): {len(management_only)} servis")
