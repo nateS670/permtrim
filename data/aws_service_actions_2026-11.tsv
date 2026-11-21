@@ -1,0 +1,41 @@
+service	action	classification	access_level	iam_source_url	event_source_url
+bedrock-mantle	archiveproject	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	cancelfinetuningjob	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	cancelinference	data		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	counttokens	data		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	createfile	data		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	createfinetuningjob	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	createinference	data		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	createproject	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	deletefile	data		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	deleteinference	data		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	getfile	data		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	getfinetuningjob	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	getinference	data		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	getmodel	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	getproject	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	listfiles	data		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	listfinetuningjobs	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	listmodels	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	listprojects	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+bedrock-mantle	updateproject	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrockmantle.html	https://docs.aws.amazon.com/bedrock/latest/userguide/logging-cloudtrail-mantle.html
+health-agent	createsubscription	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_connecthealth.html	https://docs.aws.amazon.com/connecthealth/latest/userguide/logging-using-cloudtrail.html
+health-agent	getdomainanalytics	unclassified		https://docs.aws.amazon.com/service-authorization/latest/reference/list_connecthealth.html	
+health-agent	startmedicalcodingjob	unclassified		https://docs.aws.amazon.com/service-authorization/latest/reference/list_connecthealth.html	
+health-agent	startmedicalscribelisteningsession	unclassified		https://docs.aws.amazon.com/service-authorization/latest/reference/list_connecthealth.html	
+nova-act	createact	data	Write	https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	createsession	data	Write	https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	createworkflowdefinition	management	Write	https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	createworkflowrun	unclassified	Write	https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	
+nova-act	deleteworkflowdefinition	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	deleteworkflowrun	unclassified		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	
+nova-act	getworkflowdefinition	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	getworkflowrun	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	invokeactstep	data	Write	https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	listacts	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	listmodels	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	listsessions	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	listworkflowdefinitions	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	listworkflowruns	management		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	updateact	data		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	https://docs.aws.amazon.com/nova-act/latest/userguide/logging-using-cloudtrail.html
+nova-act	updateworkflowrun	unclassified		https://docs.aws.amazon.com/service-authorization/latest/reference/list_nova-act.html	
