@@ -1,0 +1,278 @@
+TOPLAM: 276 satır, 170 benzersiz AWS service
+
+Abuse Report	| AWS::Abuse::Report	| Abuse Report	| API activity on AWS::Abuse::Report resources.
+OMWDeviceCommunicationService	| AWS::Account::ControlledDomain	| AWS::Account::ControlledDomain	| API activity on AWS::Account::ControlledDomain resources.
+Amazon WorkSpaces Applications	| AWS::AgentAccessMCP::Tools	| Agent Access MCP Tools	| Agents accessing WorkSpaces Applications MCP tool events
+AWS Agent Registry	| AWS::AgentRegistry::Registry	| AWS Agent Registry	| API activity on AWS::AgentRegistry::Registry resources.
+Amazon AIDevOps	| AWS::AIDevOps::AgentSpace	| Agent Space	| AIDevOps API activity on agent spaces.
+Amazon AIDevOps	| AWS::AIDevOps::Association	| AIDevOps association	| AIDevOps API activity on associations.
+Amazon AIDevOps	| AWS::AIDevOps::OperatorAppTeam	| AIDevOps operator app team	| AIDevOps API activity on operator app teams.
+Amazon AIDevOps	| AWS::AIDevOps::PipelineMetadata	| AIDevOps Pipelines Metadata	| AIDevOps API activity on pipeline metadata.
+Amazon AIDevOps	| AWS::AIDevOps::Service	| AIDevOps service	| AIDevOps API activity on services.
+Amazon Q Developer	| AWS::AIOps::InvestigationGroup	| AIOps Investigation Group	| Amazon Q Developer API activity on operational investigation
+AWS Amplify	| AWS::AmplifyGen3::Branch	| Amplify Gen 3 Backend Branch	| Amplify Gen 3 Backend Branch.
+Amazon OpenSearch Serverless	| AWS::AOSS::Collection	| AWS::AOSS::Collection	| API activity on AWS::AOSS::Collection resources.
+AWS AppConfig	| AWS::AppConfig::Configuration	| AWS AppConfig	| AWS AppConfig API activity for configuration operations such
+CloudWatch Application Signals	| AWS::ApplicationSignals::InstrumentationConfig	| AWS::ApplicationSignals::InstrumentationConfig	| API activity on AWS::ApplicationSignals::InstrumentationConf
+AWS App Monetization	| AWS::AppMonetization::App	| App Monetization app	| AWS App Monetization usage event and entitlement check activ
+AWS AppSync	| AWS::AppSync::GraphQLApi	| AppSync GraphQL	| AWS AppSync API activity on AppSync GraphQL APIs. For more i
+aws assurance	| AWS::Assurance::Environment	| AWS::Assurance::Environment	| API activity on AWS::Assurance::Environment resources.
+External anthropic workspace	| AWS::AWSExternalAnthropic::Workspace	| External anthropic workspace	| API activity on AWS::AWSExternalAnthropic::Workspace resourc
+AWS B2B Data Interchange	| AWS::B2BI::Transformer	| B2B Data Interchange	| B2B Data Interchange API activity for Transformer operations
+AWS Backup access point	| AWS::Backup::BackupAccessPoint	| AWS Backup access point	| API activity on AWS::Backup::BackupAccessPoint resources.
+AWS Backup	| AWS::Backup::SearchJob	| AWS Backup Search Data APIs	| AWS Backup Search Data API activity on search jobs.
+Amazon Bedrock	| AWS::Bedrock::AdvancedOptimizePromptJob	| AdvancedOptimizePromptJob	| Bedrock API activity on advanced optimize prompt jobs.
+Amazon Bedrock	| AWS::Bedrock::AgentAlias	| Bedrock agent alias	| Amazon Bedrock API activity on an agent alias. For more info
+Amazon Bedrock	| AWS::Bedrock::AsyncInvoke	| Bedrock async invoke	| Amazon Bedrock API activity on async invocations.
+Amazon Bedrock	| AWS::Bedrock::AutomatedReasoningPolicy	| Bedrock Automated Reasoning Policy	| Amazon Bedrock API activity on an automated reasoning policy
+Amazon Bedrock	| AWS::Bedrock::AutomatedReasoningPolicyVersion	| Bedrock Automated Reasoning Policy Version	| Amazon Bedrock API activity on an automated reasoning policy
+Amazon Bedrock	| AWS::Bedrock::Blueprint	| Bedrock blueprint	| Amazon Bedrock blueprint API activity.
+Amazon Bedrock	| AWS::Bedrock::DataAutomationInvocation	| Bedrock Data Automation invocation	| Bedrock data automation invocation API activity.
+Amazon Bedrock	| AWS::Bedrock::DataAutomationProfile	| Bedrock Data Automation profile	| Amazon Bedrock data automation profile API activity.
+Amazon Bedrock	| AWS::Bedrock::DataAutomationProject	| Bedrock Data Automation project	| Amazon Bedrock data automation project API activity.
+Amazon Bedrock	| AWS::Bedrock::FlowAlias	| Bedrock flow alias	| Amazon Bedrock API activity on a flow alias.
+Amazon Bedrock	| AWS::Bedrock::FlowExecution	| Flow Execution	| Amazon Bedrock API activity on flow executions.
+Amazon Bedrock	| AWS::Bedrock::Guardrail	| Bedrock guardrail	| Amazon Bedrock API activity on guardrails.
+Amazon Bedrock	| AWS::Bedrock::InlineAgent	| Bedrock Invoke Inline-Agent	| Amazon Bedrock API activity on inline agents.
+Amazon Bedrock	| AWS::Bedrock::KnowledgeBase	| Bedrock knowledge base	| Amazon Bedrock API activity on a knowledge base. For more in
+Amazon Bedrock	| AWS::Bedrock::Model	| Bedrock model	| Amazon Bedrock API activity on models.
+Amazon Bedrock	| AWS::Bedrock::PromptVersion	| Bedrock prompt	| Amazon Bedrock API activity on prompts.
+Amazon Bedrock	| AWS::Bedrock::Session	| Bedrock session	| Amazon Bedrock API activity on sessions.
+Amazon Bedrock	| AWS::Bedrock::Tool	| Bedrock Tool	| Amazon Bedrock Tool API activity.
+Bedrock-AgentCore ABTest	| AWS::BedrockAgentCore::ABTest	| Bedrock-AgentCore ABTest	| API activity on AWS::BedrockAgentCore::ABTest resources.
+Amazon Bedrock AgentCore	| AWS::BedrockAgentCore::AgentInsightStore	| Agent Insight Store for Bedrock AgentCore Evaluations	| Agent Insight Stores for Bedrock AgentCore Evaluations.
+Amazon Bedrock	| AWS::BedrockAgentCore::APIKeyCredentialProvider	| Bedrock-AgentCore APIKey CredentialProvider	| Amazon Bedrock APIKey CredentialProvider API activity.
+BedrockAgentCore batch evaluate	| AWS::BedrockAgentCore::BatchEvaluate	| BedrockAgentCore batch evaluate	| API activity on AWS::BedrockAgentCore::BatchEvaluate resourc
+Amazon Bedrock	| AWS::BedrockAgentCore::Browser	| Bedrock-AgentCore Browser	| Amazon Bedrock Browser API activity.
+Amazon Bedrock	| AWS::BedrockAgentCore::BrowserCustom	| Bedrock-AgentCore Browser-Custom	| Amazon Bedrock Browser-Custom API activity.
+Bedrock-AgentCore Browser Profile	| AWS::BedrockAgentCore::BrowserProfile	| Bedrock-AgentCore Browser Profile	| API activity on AWS::BedrockAgentCore::BrowserProfile resour
+BedrockAgentCore CapacityProvider	| AWS::BedrockAgentCore::CapacityProvider	| BedrockAgentCore CapacityProvider	| API activity on AWS::BedrockAgentCore::CapacityProvider reso
+Amazon Bedrock	| AWS::BedrockAgentCore::CodeInterpreter	| Bedrock-AgentCore Code-Interpreter	| Amazon Bedrock Code-Interpreter API activity.
+Amazon Bedrock	| AWS::BedrockAgentCore::CodeInterpreterCustom	| Bedrock-AgentCore Code-Interpreter-Custom	| Amazon Bedrock Code-Interpreter-Custom API activity.
+Amazon Bedrock AgentCore Evaluations	| AWS::BedrockAgentCore::Dataset	| AgentCore Evaluation Dataset	| Dataset for AgentCore Evaluations.
+Amazon Bedrock AgentCore	| AWS::BedrockAgentCore::Evaluator	| Bedrock-AgentCore Evaluator	| Bedrock AgentCore API activity on evaluators.
+Amazon Bedrock	| AWS::BedrockAgentCore::Gateway	| Bedrock-AgentCore Gateway	| Amazon Bedrock Gateway API activity.
+Amazon Bedrock	| AWS::BedrockAgentCore::Memory	| Bedrock-AgentCore Memory	| Amazon Bedrock Memory API activity.
+Amazon Bedrock	| AWS::BedrockAgentCore::OAuth2CredentialProvider	| Bedrock-AgentCore Oauth2 CredentialProvider	| Amazon Bedrock Oauth2 CredentialProvider API activity.
+Bedrock-AgentCore payments	| AWS::BedrockAgentCore::Payments	| Bedrock-AgentCore payments	| API activity on AWS::BedrockAgentCore::Payments resources.
+Bedrock-AgentCore policy	| AWS::BedrockAgentCore::Policy	| Bedrock-AgentCore policy	| API activity on AWS::BedrockAgentCore::Policy resources.
+Bedrock-AgentCore policy engine	| AWS::BedrockAgentCore::PolicyEngine	| Bedrock-AgentCore policy engine	| API activity on AWS::BedrockAgentCore::PolicyEngine resource
+Bedrock-AgentCore Recommendation	| AWS::BedrockAgentCore::Recommendation	| Bedrock-AgentCore Recommendation	| API activity on AWS::BedrockAgentCore::Recommendation resour
+Bedrock-AgentCore Registry	| AWS::BedrockAgentCore::Registry	| Bedrock-AgentCore Registry	| API activity on AWS::BedrockAgentCore::Registry resources.
+Amazon Bedrock	| AWS::BedrockAgentCore::Runtime	| Bedrock-AgentCore Runtime	| Amazon Bedrock Runtime API activity.
+Amazon Bedrock	| AWS::BedrockAgentCore::RuntimeEndpoint	| Bedrock-AgentCore Runtime-Endpoint	| Amazon Bedrock Runtime-Endpoint API activity.
+Amazon Bedrock	| AWS::BedrockAgentCore::TokenVault	| Bedrock-AgentCore Token Vault	| Amazon Bedrock Token Vault API activity.
+Amazon Bedrock AgentCore	| AWS::BedrockAgentCore::WebSearch	| Bedrock-AgentCore Web-Search	| Amazon Bedrock AgentCore web search invocation events (Invok
+Amazon Bedrock	| AWS::BedrockAgentCore::WorkloadIdentity	| Bedrock-AgentCore Workload Identity	| Amazon Bedrock Workload Identity API activity.
+Amazon Bedrock	| AWS::BedrockAgentCore::WorkloadIdentityDirectory	| Bedrock-AgentCore Workload Identity Directory	| Amazon Bedrock Workload Identity Directory API activity.
+Bedrock Mantle Project	| AWS::BedrockMantle::Project	| Bedrock Mantle Project	| API activity on AWS::BedrockMantle::Project resources.
+Bedrock Web Search Tool	| AWS::BedrockWebSearch::Tool	| Bedrock Web Search Tool	| API activity on AWS::BedrockWebSearch::Tool resources.
+Amazon Keyspaces (for Apache Cassandra)	| AWS::Cassandra::Stream	| Cassandra CDC streams	| Amazon Keyspaces (for Apache Cassandra) API activity on Cass
+Amazon Keyspaces (for Apache Cassandra)	| AWS::Cassandra::Table	| Cassandra table	| Amazon Keyspaces API activity on a table. For more informati
+Certificate Manager	| AWS::CertificateManager::AcmeEndpoint	| AWS::CertificateManager::AcmeEndpoint	| API activity on AWS::CertificateManager::AcmeEndpoint resour
+Clinical Trials Tech codelist	| AWS::ClinicalTrialsTech::Codelist	| Clinical Trials Tech codelist	| API activity on AWS::ClinicalTrialsTech::Codelist resources.
+Clinical Trials Tech dataset	| AWS::ClinicalTrialsTech::Dataset	| Clinical Trials Tech dataset	| API activity on AWS::ClinicalTrialsTech::Dataset resources.
+Clinical Trials Tech execution	| AWS::ClinicalTrialsTech::Execution	| Clinical Trials Tech execution	| API activity on AWS::ClinicalTrialsTech::Execution resources
+Clinical Trials Tech instance	| AWS::ClinicalTrialsTech::Instance	| Clinical Trials Tech instance	| API activity on AWS::ClinicalTrialsTech::Instance resources.
+Clinical Trials Tech mapping	| AWS::ClinicalTrialsTech::Mapping	| Clinical Trials Tech mapping	| API activity on AWS::ClinicalTrialsTech::Mapping resources.
+Clinical Trials Tech schedule	| AWS::ClinicalTrialsTech::Schedule	| Clinical Trials Tech schedule	| API activity on AWS::ClinicalTrialsTech::Schedule resources.
+Clinical Trials Tech study	| AWS::ClinicalTrialsTech::Study	| Clinical Trials Tech study	| API activity on AWS::ClinicalTrialsTech::Study resources.
+AWS Cloud Extensions	| AWS::CloudExtensions::Profile	| Cloud Extensions profile level events	| Profile-level data events for AWS Cloud Extensions.
+Amazon CloudFront	| AWS::CloudFront::KeyValueStore	| CloudFront KeyValueStore	| CloudFront API activity on a KeyValueStore. For more informa
+Amazon Cost Optimization	| AWS::CloudOptimization::Profile	| AWS::CloudOptimization::Profile	| CloudOptimization API activity on profiles.
+Amazon Cost Optimization	| AWS::CloudOptimization::Recommendation	| AWS::CloudOptimization::Recommendation	| CloudOptimization API activity on recommendations.
+AWS CloudTrail	| AWS::CloudTrail::Channel	| CloudTrail channel	| CloudTrail PutAuditEvents activity on a CloudTrail Lake chan
+CloudWatch dataset	| AWS::CloudWatch::Dataset	| CloudWatch dataset	| API activity on AWS::CloudWatch::Dataset resources.
+Observability ingestion endpoint	| AWS::CloudWatch::IngestionEndpoint	| Observability ingestion endpoint	| API activity on AWS::CloudWatch::IngestionEndpoint resources
+Amazon CloudWatch	| AWS::CloudWatch::Metric	| CloudWatch metric	| Amazon CloudWatch API activity on metrics. For more informat
+Amazon CodeGuru Profiler	| AWS::CodeGuruProfiler::ProfilingGroup	| CodeGuru Profiler profiling group	| CodeGuru Profiler API activity on profiling groups.
+Amazon CodeWhisperer	| AWS::CodeWhisperer::Customization	| CodeWhisperer customization	| Amazon CodeWhisperer API activity on a customization.
+Amazon CodeWhisperer	| AWS::CodeWhisperer::Profile	| CodeWhisperer	| Amazon CodeWhisperer API activity on a profile.
+Amazon Cognito	| AWS::Cognito::IdentityPool	| Cognito Identity Pools	| Amazon Cognito API activity on Amazon Cognito identity pools
+AWS Context	| AWS::Context::AgentContext	| AWS agent context	| Agent-context-level Data events for AWS Context.
+AWS Context	| AWS::Context::Task	| AWS Context Task	| Task-level Data events for AWS Context.
+AWS Context	| AWS::ContextMCP::Tools	| AWS Context MCP Tools	| MCP tool-level data events for AWS Context.
+AWS Continuum	| AWS::Continuum::SupplyChainPackageDecision	| Continuum Supply Chain package decision	| Package decision data events for AWS Continuum for software 
+AWS Continuum	| AWS::Continuum::SupplyChainPackageVulnerability	| Continuum Supply Chain Vulnerability	| Package vulnerability data events for AWS Continuum for soft
+AWS IAM Credential Broker	| AWS::CredentialBroker::CredentialProvider	| AWS IAM Credential Broker Credential Provider	| Credential provider level events for AWS IAM Credential Brok
+AWS Data Exchange	| AWS::DataExchange::Asset	| Data Exchange asset	| AWS Data Exchange API activity on assets.
+AWS Deadline Cloud	| AWS::Deadline::Fleet	| Deadline Cloud fleet	| Deadline Cloud API activity on fleets. For more information,
+AWS Deadline Cloud	| AWS::Deadline::Job	| Deadline Cloud job	| Deadline Cloud API activity on jobs. For more information, s
+AWS Deadline Cloud	| AWS::Deadline::Queue	| Deadline Cloud queue	| Deadline Cloud API activity on queues. For more information,
+AWS Deadline Cloud	| AWS::Deadline::Worker	| Deadline Cloud worker	| Deadline Cloud API activity on workers. For more information
+Diode Alerting linked alert	| AWS::DiodeAlerting::LinkedAlert	| Diode Alerting linked alert	| API activity on AWS::DiodeAlerting::LinkedAlert resources.
+Amazon Aurora DSQL	| AWS::DSQL::Cluster	| Amazon Aurora DSQL	| Amazon Aurora DSQL API activity on cluster resources.
+Amazon DynamoDB	| AWS::DynamoDB::Stream	| DynamoDB Streams	| Amazon DynamoDB API activity on streams. For more informatio
+Amazon DynamoDB	| AWS::DynamoDB::Table	| DynamoDB	| Amazon DynamoDB item-level API activity on tables (for examp
+Amazon Elastic Compute Cloud	| AWS::EC2::InstanceConnectEndpoint	| EC2 instance connect endpoint	| Amazon EC2 instance connect endpoint API activity.
+Amazon Elastic Block Store	| AWS::EC2::Snapshot	| EBS direct APIs	| Amazon Elastic Block Store (EBS) direct APIs, such as PutSna
+Amazon Elastic Container Service	| AWS::ECS::ContainerInstance	| ECS container instance	| Amazon Elastic Container Service API activity on a container
+Amazon Elastic Kubernetes Service	| AWS::EKS::Dashboard	| EKS dashboard	| Amazon Elastic Kubernetes Service API activity on dashboards
+Amazon EMR	| AWS::EMRWAL::Workspace	| EMR write-ahead log workspace	| Amazon EMR API activity on a write-ahead log workspace. For 
+end-user-messaging	| AWS::EndUserMessaging::NotifyCodeVerification	| AWS::EndUserMessaging::NotifyCodeVerification	| API activity on AWS::EndUserMessaging::NotifyCodeVerificatio
+EventBridge endpoint	| AWS::Events::Endpoint	| EventBridge endpoint	| API activity on AWS::Events::Endpoint resources.
+EventBridge Custom event bus - classic	| AWS::Events::EventBus	| EventBridge Custom event bus - classic	| API activity on AWS::Events::EventBus resources.
+EventBridge partner event source	| AWS::Events::EventSource	| EventBridge partner event source	| API activity on AWS::Events::EventSource resources.
+EventBridge rule	| AWS::Events::Rule	| EventBridge rule	| API activity on AWS::Events::Rule resources.
+EventBridge Custom event bus	| AWS::EventsV2::EventBus	| EventBridge Custom event bus	| API activity on AWS::EventsV2::EventBus resources.
+EventBridge Custom event bus event source	| AWS::EventsV2::EventSource	| EventBridge Custom event bus event source	| API activity on AWS::EventsV2::EventSource resources.
+Amazon FinSpace	| AWS::FinSpace::Environment	| FinSpace	| Amazon FinSpace API activity on environments. For more infor
+Amazon FSx	| AWS::FSx::Volume	| FSx Volume	| Amazon FSx API activity on volumes.
+Amazon GameLift Streams	| AWS::GameLiftStreams::Application	| GameLift Streams application	| Amazon GameLift Streams streaming API activity on applicatio
+Amazon GameLift Streams	| AWS::GameLiftStreams::StreamGroup	| GameLift Streams stream group	| Amazon GameLift Streams streaming API activity on stream gro
+Amazon Location Maps	| AWS::GeoMaps::Provider	| Geo Maps	| Amazon Location Maps API activity.
+Amazon Location Places	| AWS::GeoPlaces::Provider	| Geo Places	| Amazon Location Places API activity.
+Amazon Location Routes	| AWS::GeoRoutes::Provider	| Geo Routes	| Amazon Location Routes API activity.
+AWS Glue	| AWS::Glue::Table	| Lake Formation	| AWS Glue API activity on tables that were created by Lake Fo
+AWS IoT Greengrass Version 2	| AWS::GreengrassV2::ComponentVersion	| IoT Greengrass component version	| Greengrass API activity from a Greengrass core device on a c
+AWS IoT Greengrass Version 2	| AWS::GreengrassV2::Deployment	| IoT Greengrass deployment	| Greengrass API activity from a Greengrass core device on a d
+Amazon GuardDuty	| AWS::GuardDuty::Detector	| GuardDuty detector	| Amazon GuardDuty API activity for a detector. For more infor
+Amazon GuardDuty	| AWS::GuardDuty::MalwareScan	| GuardDuty malware scan	| GuardDuty API activity on malware scans.
+Health agent domain	| AWS::HealthAgent::Domain	| Health agent domain	| API activity on AWS::HealthAgent::Domain resources.
+Amazon Connect Health	| AWS::HealthAgent::Integration	| AWS::HealthAgent::Integration	| API activity on AWS::HealthAgent::Integration resources.
+Amazon Connect Health	| AWS::HealthAgent::PatientInsightsJob	| health-agent.amazonaws.com	| API activity on AWS::HealthAgent::PatientInsightsJob resourc
+Amazon Connect Health	| AWS::HealthAgent::Session	| AWS::HealthAgent::Session	| API activity on AWS::HealthAgent::Session resources.
+Health agent subscription	| AWS::HealthAgent::Subscription	| Health agent subscription	| API activity on AWS::HealthAgent::Subscription resources.
+Health Lake data transformation profile	| AWS::HealthLake::DataTransformationProfile	| Health Lake data transformation profile	| API activity on AWS::HealthLake::DataTransformationProfile r
+AWS IoT	| AWS::IoT::Certificate	| IoT certificate	| AWS IoT API activity on certificates. For more information, 
+AWS IoT	| AWS::IoT::Thing	| IoT thing	| AWS IoT API activity on things. For more information, see AW
+AWS IoT tunnel	| AWS::IoT::Tunnel	| AWS IoT tunnel	| API activity on AWS::IoT::Tunnel resources.
+AWS IoT SiteWise	| AWS::IoTSiteWise::Asset	| IoT SiteWise asset	| IoT SiteWise API activity on assets. For more information, s
+IoT SiteWise dataset	| AWS::IoTSiteWise::Dataset	| IoT SiteWise dataset	| API activity on AWS::IoTSiteWise::Dataset resources.
+IoT SiteWise pipeline	| AWS::IoTSiteWise::Pipeline	| IoT SiteWise pipeline	| API activity on AWS::IoTSiteWise::Pipeline resources.
+AWS IoT SiteWise	| AWS::IoTSiteWise::TimeSeries	| IoT SiteWise time series	| IoT SiteWise API activity on time series. For more informati
+IoT SiteWise workspace	| AWS::IoTSiteWise::Workspace	| IoT SiteWise workspace	| API activity on AWS::IoTSiteWise::Workspace resources.
+AWS IoT TwinMaker	| AWS::IoTTwinMaker::Entity	| IoT TwinMaker entity	| IoT TwinMaker API activity on an entity. For more informatio
+AWS IoT TwinMaker	| AWS::IoTTwinMaker::Workspace	| IoT TwinMaker workspace	| IoT TwinMaker API activity on a workspace. For more informat
+Amazon Kendra Intelligent Ranking	| AWS::KendraRanking::ExecutionPlan	| Kendra Ranking	| Amazon Kendra Intelligent Ranking API activity on rescore ex
+Kinesis queue	| AWS::Kinesis::Queue	| Kinesis queue	| API activity on AWS::Kinesis::Queue resources.
+Amazon Kinesis Data Streams	| AWS::Kinesis::Stream	| Kinesis stream	| Kinesis Data Streams API activity on streams. For more infor
+Amazon Kinesis Data Streams	| AWS::Kinesis::StreamConsumer	| Kinesis stream consumer	| Kinesis Data Streams API activity on stream consumers. For m
+Amazon Data Firehose	| AWS::KinesisFirehose::DeliveryStream	| Amazon Data Firehose	| Amazon Data Firehose delivery stream API activity.
+Amazon Kinesis Video Streams	| AWS::KinesisVideo::SignalingChannel	| Kinesis video signaling channel	| Kinesis Video Streams video signaling channel API activity.
+Amazon Kinesis Video Streams	| AWS::KinesisVideo::Stream	| Kinesis video stream	| Kinesis Video Streams API activity on video streams, such as
+AWS Lambda	| AWS::Lambda::Function	| Lambda	| AWS Lambda function execution activity (the Invoke API).
+Lambda microvm image	| AWS::Lambda::MicrovmImage	| Lambda microvm image	| API activity on AWS::Lambda::MicrovmImage resources.
+Lambda Web Function	| AWS::Lambda::WebFunction	| Lambda WebFunction	| API activity on AWS::Lambda::WebFunction resources.
+Lex Bot	| AWS::Lex::Bot	| Lex Bot	| API activity on AWS::Lex::Bot resources.
+AWS Lex Bot Alias	| AWS::Lex::BotAlias	| AWS Lex Bot Alias	| API activity on AWS::Lex::BotAlias resources.
+CloudWatch Logs log group authorization	| AWS::Logs::LogGroupAuthorization	| CloudWatch Logs log group authorization	| API activity on AWS::Logs::LogGroupAuthorization resources.
+Logs ScheduledQuery	| AWS::Logs::ScheduledQuery	| Logs ScheduledQuery	| API activity on AWS::Logs::ScheduledQuery resources.
+Amazon Machine Learning	| AWS::MachineLearning::MlModel	| Machine Learning MlModel	| Machine Learning API activity on ML models.
+Amazon Managed Blockchain	| AWS::ManagedBlockchain::Network	| Managed Blockchain network	| Amazon Managed Blockchain API activity on a network.
+Amazon Managed Blockchain	| AWS::ManagedBlockchain::Node	| Managed Blockchain	| Amazon Managed Blockchain JSON-RPC calls on Ethereum nodes, 
+Amazon Managed Blockchain Query	| AWS::ManagedBlockchainQuery::QueryAPI	| Managed Blockchain Query	| Amazon Managed Blockchain Query API activity.
+AWS HealthImaging	| AWS::MedicalImaging::Datastore	| MedicalImaging data store	| AWS HealthImaging API activity on data stores.
+AWS HealthImaging	| AWS::MedicalImaging::Imageset	| MedicalImaging image set	| AWS HealthImaging image set API activity.
+Amazon Managed Workflows for Apache Airflow	| AWS::MWAA::Environment	| Managed Apache Airflow	| Amazon MWAA API activity on environments.
+Amazon Neptune Graph	| AWS::NeptuneGraph::Graph	| Neptune Graph	| Data API activities, for example queries, algorithms, or vec
+Amazon CloudWatch Network Flow Monitor	| AWS::NetworkFlowMonitor::Monitor	| Network Flow Monitor monitor	| Amazon CloudWatch Network Flow Monitor API activity on monit
+Amazon CloudWatch Network Flow Monitor	| AWS::NetworkFlowMonitor::PerformanceMonitor	| Network Flow Monitor performance monitor	| Amazon CloudWatch Network Flow Monitor API activity on perfo
+Amazon CloudWatch Network Flow Monitor	| AWS::NetworkFlowMonitor::Scope	| Network Flow Monitor scope	| Amazon CloudWatch Network Flow Monitor API activity on scope
+Amazon NovaAct	| AWS::NovaAct::WorkflowDefinition	| Workflow definition	| Amazon NovaAct API activity on workflow definitions.
+Amazon NovaAct	| AWS::NovaAct::WorkflowRun	| Workflow run	| Amanzon NovaAct API activity on workflow runs.
+Amazon One Enterprise	| AWS::One::UKey	| Amazon One UKey	| Amazon One Enterprise API activity on a UKey.
+Amazon One Enterprise	| AWS::One::User	| Amazon One User	| Amazon One Enterprise API activity on users.
+Amazon OpenSearch Memory	| AWS::Osm::Space	| OpenSearch Memory Space Level Events	| Space level data events for Amazon OpenSearch Memory.
+AWS Payment Cryptography	| AWS::PaymentCryptography::Alias	| Payment Cryptography alias	| AWS Payment Cryptography API activity on aliases.
+AWS Payment Cryptography	| AWS::PaymentCryptography::Key	| Payment Cryptography key	| AWS Payment Cryptography API activity on keys.
+AWS Private CA	| AWS::PCAConnectorAD::Connector	| Private CA Connector for Active Directory	| AWS Private CA Connector for Active Directory API activity.
+AWS Private CA	| AWS::PCAConnectorSCEP::Connector	| Private CA Connector for SCEP	| AWS Private CA Connector for SCEP API activity.
+Amazon Pinpoint	| AWS::Pinpoint::App	| Mobile Targeting Application	| Amazon Pinpoint API activity on mobile targeting application
+Amazon Q Apps	| AWS::QApps::QApp	| Amazon Q Apps	| Data API activity on Amazon Q Apps. For more information, se
+Amazon Q Apps	| AWS::QApps::QAppSession	| Amazon Q App Session	| Data API activity on Amazon Q App sessions.
+Amazon Q Business	| AWS::QBusiness::Application	| Amazon Q Business application	| Amazon Q Business API activity on an application. For more i
+Amazon Q Business	| AWS::QBusiness::DataSource	| Amazon Q Business data source	| Amazon Q Business API activity on a data source. For more in
+Amazon Q Business	| AWS::QBusiness::Index	| Amazon Q Business index	| Amazon Q Business API activity on an index. For more informa
+Amazon Q Business	| AWS::QBusiness::Integration	| Amazon Q Business integration	| Amazon Q Business integration API activity.
+Amazon Q Business	| AWS::QBusiness::WebExperience	| Amazon Q Business web experience	| Amazon Q Business API activity on a web experience. For more
+Amazon Q Developer	| AWS::QDeveloper::Integration	| Q Developer integration	| Amazon Q Developer API activity on an integration.
+Amazon Quick	| AWS::Quicksight::ActionConnector	| AWS QuickSuite Actions	| Amazon Quick API activity on an action connector.
+Amazon QuickSight App	| AWS::QuickSight::App	| Amazon QuickSight App	| API activity on AWS::QuickSight::App resources.
+QuickSight automation	| AWS::QuickSight::Automation	| QuickSight automation	| API activity on AWS::QuickSight::Automation resources.
+QuickSight automation job	| AWS::QuickSight::AutomationJob	| QuickSight automation job	| API activity on AWS::QuickSight::AutomationJob resources.
+AWS QuickSight Extension	| AWS::QuickSight::Extension	| AWS QuickSight Extension	| API activity on AWS::QuickSight::Extension resources.
+AWS QuickSight Extension Access	| AWS::QuickSight::ExtensionAccess	| AWS QuickSight Extension Access	| API activity on AWS::QuickSight::ExtensionAccess resources.
+Amazon Quick	| AWS::QuickSight::Flow	| AWS QuickSight flow	| Amazon Quick Flow API activity.
+Amazon Quick	| AWS::QuickSight::FlowSession	| AWS QuickSight flow session	| Amazon Quick FlowSession API activity.
+Amazon QuickSight Page	| AWS::QuickSight::Page	| Amazon QuickSight Page	| API activity on AWS::QuickSight::Page resources.
+QuickSight Task	| AWS::QuickSight::Task	| QuickSight Task	| API activity on AWS::QuickSight::Task resources.
+Amazon RDS	| AWS::RDS::DBCluster	| RDS Data API - DB Cluster	| Amazon RDS API activity on a DB Cluster. For more informatio
+Amazon Redshift	| AWS::Redshift::Cluster	| Redshift Cluster	| Redshift API activity on clusters.
+AWS Resource Explorer managed-view	| AWS::ResourceExplorer2::ManagedView	| AWS Resource Explorer managed-view	| API activity on AWS::ResourceExplorer2::ManagedView resource
+AWS Resource Explorer view	| AWS::ResourceExplorer2::View	| AWS Resource Explorer view	| API activity on AWS::ResourceExplorer2::View resources.
+Amazon CloudWatch RUM	| AWS::RUM::AppMonitor	| RUM app monitor	| Amazon CloudWatch RUM API activity on app monitors.
+Amazon S3	| AWS::S3::AccessPoint	| S3 Access Point	| Amazon S3 API activity on access points. For more informatio
+Amazon S3	| AWS::S3::Object	| S3	| Amazon S3 object-level API activity (for example, GetObject,
+S3 Express Access Point	| AWS::S3Express::AccessPoint	| S3 Express Access Point	| API activity on AWS::S3Express::AccessPoint resources.
+Amazon S3	| AWS::S3Express::Object	| S3 Express	| Amazon S3 object-level API activity (for example, GetObject,
+Amazon S3	| AWS::S3ObjectLambda::AccessPoint	| S3 Object Lambda	| Amazon S3 Object Lambda access points API activity, such as 
+Amazon S3 on Outposts	| AWS::S3Outposts::Object	| S3 Outposts	| Amazon S3 on Outposts object-level API activity. For more in
+Amazon S3 Tables	| AWS::S3Tables::Table	| S3 table	| Amazon S3 API activity on tables. For more information, see 
+Amazon S3 Tables	| AWS::S3Tables::TableBucket	| S3 table bucket	| Amazon S3 API activity on table buckets. For more informatio
+Amazon S3 Vectors	| AWS::S3Vectors::Index	| S3 vector index	| Amazon S3 API activity on vector indexes. For more informati
+Amazon S3 Vectors	| AWS::S3Vectors::VectorBucket	| S3 vector bucket	| Amazon S3 API activity on vector buckets. For more informati
+Amazon SageMaker AI	| AWS::SageMaker::Endpoint	| SageMaker endpoint	| Amazon SageMaker AI InvokeEndpointWithResponseStream activit
+Amazon SageMaker AI	| AWS::SageMaker::ExperimentTrialComponent	| SageMaker metrics experiment trial component	| Amazon SageMaker AI API activity on experiment trial compone
+Amazon SageMaker AI	| AWS::SageMaker::FeatureGroup	| SageMaker Feature Store	| Amazon SageMaker AI API activity on feature stores.
+SageMaker hub	| AWS::SageMaker::Hub	| SageMaker hub	| API activity on AWS::SageMaker::Hub resources.
+Amazon SageMaker	| AWS::SageMaker::InferenceRouter	| SageMaker inference router	| SageMaker inference router that routes real-time and asynchr
+SageMaker jobs	| AWS::SageMaker::Job	| SageMaker jobs	| API activity on AWS::SageMaker::Job resources.
+AWS SageMaker MlflowApp	| AWS::SageMaker::MlflowApp	| AWS SageMaker MlflowApp	| API activity on AWS::SageMaker::MlflowApp resources.
+Amazon SageMaker AI	| AWS::SageMaker::MlflowTrackingServer	| SageMaker MLflow	| Amazon SageMaker AI MLflow API activity.
+SageMaker training session	| AWS::SageMaker::TrainingSession	| SageMaker training session	| API activity on AWS::SageMaker::TrainingSession resources.
+AWS Supply Chain	| AWS::SCN::BusinessRule	| AWS::SCN::BusinessRule	| API activity on AWS::SCN::BusinessRule resources.
+AWS Supply Chain	| AWS::SCN::DataLakeException	| AWS::SCN::DataLakeException	| API activity on AWS::SCN::DataLakeException resources.
+AWS Supply Chain	| AWS::SCN::ExceptionInvestigation	| AWS::SCN::ExceptionInvestigation	| API activity on AWS::SCN::ExceptionInvestigation resources.
+AWS Supply Chain	| AWS::SCN::ExceptionRule	| AWS::SCN::ExceptionRule	| API activity on AWS::SCN::ExceptionRule resources.
+AWS Supply Chain	| AWS::SCN::Instance	| Amazon Connect Decisions	| Supply Chain API activity on an instance.
+AWS Supply Chain	| AWS::SCN::Metric	| AWS::SCN::Metric	| API activity on AWS::SCN::Metric resources.
+AWS Supply Chain	| AWS::SCN::MetricEvaluation	| AWS::SCN::MetricEvaluation	| API activity on AWS::SCN::MetricEvaluation resources.
+AWS Supply Chain	| AWS::SCN::Outcome	| AWS::SCN::Outcome	| API activity on AWS::SCN::Outcome resources.
+AWS Supply Chain	| AWS::SCN::OutcomeTemplate	| AWS::SCN::OutcomeTemplate	| API activity on AWS::SCN::OutcomeTemplate resources.
+Amazon SimpleDB	| AWS::SDB::Domain	| SimpleDB domain	| Amazon SimpleDB API activity on domains.
+AWS Cloud Map	| AWS::ServiceDiscovery::Namespace	| AWS Cloud Map namespace	| AWS Cloud Map API activity on a namespace. For more informat
+AWS Cloud Map	| AWS::ServiceDiscovery::Service	| AWS Cloud Map service	| AWS Cloud Map API activity on a service. For more informatio
+Amazon Simple Email Service	| AWS::SES::ConfigurationSet	| SES configuration set	| Amazon Simple Email Service (Amazon SES) API activity on con
+Amazon Simple Email Service	| AWS::SES::EmailIdentity	| SES identity	| Amazon Simple Email Service (Amazon SES) API activity on ema
+Amazon Simple Email Service	| AWS::SES::Template	| SES template	| Amazon Simple Email Service (Amazon SES) API activity on tem
+AWS Signer	| AWS::Signer::SigningJob	| Signer signing job	| Signer API activity on signing jobs.
+AWS Signer	| AWS::Signer::SigningProfile	| Signer signing profile	| Signer API activity on signing profiles.
+AWS IoT SiteWise Assistant	| AWS::SitewiseAssistant::Conversation	| Sitewise Assistant conversation	| Sitewise Assistant API activity on conversations.
+Carrier Lookup	| AWS::SMSVoice::CarrierLookup	| Carrier Lookup	| API activity on AWS::SMSVoice::CarrierLookup resources.
+Configuration Set	| AWS::SMSVoice::ConfigurationSet	| Configuration Set	| API activity on AWS::SMSVoice::ConfigurationSet resources.
+AWS End User Messaging SMS	| AWS::SMSVoice::Message	| SMS Voice message	| AWS End User Messaging SMS API activity on messages. For mor
+Notify Configuration	| AWS::SMSVoice::NotifyConfiguration	| Notify Configuration	| API activity on AWS::SMSVoice::NotifyConfiguration resources
+AWS End User Messaging SMS	| AWS::SMSVoice::OriginationIdentity	| SMS Voice origination identity	| AWS End User Messaging SMS API activity on origination ident
+Amazon SNS	| AWS::SNS::PlatformEndpoint	| SNS platform endpoint	| Amazon SNS Publish API operations on platform endpoints. For
+Amazon SNS	| AWS::SNS::Topic	| SNS topic	| Amazon SNS Publish and PublishBatch API operations on topics
+AWS End User Messaging Social	| AWS::SocialMessaging::PhoneNumberId	| Social-Messaging Phone Number ID	| AWS End User Messaging Social API activity on phone number I
+AWS End User Messaging Social	| AWS::SocialMessaging::WabaId	| Social-Messaging Waba ID	| AWS End User Messaging Social API activity on Waba IDs.
+Amazon SQS	| AWS::SQS::Queue	| SQS	| Amazon SQS API activity on messages. For more information, s
+AWS Systems Manager	| AWS::SSM::ExecutionPreview	| SSM Impact Assessment	| Systems Manager API activity on impact assessments.
+AWS Systems Manager	| AWS::SSM::ManagedNode	| Systems Manager managed node	| Systems Manager API activity on managed nodes. For more info
+AWS Systems Manager	| AWS::SSMMessages::ControlChannel	| Systems Manager	| Systems Manager API activity on control channels. For more i
+AWS Step Functions	| AWS::StepFunctions::Activity	| Step Functions activity	| Step Functions API activity on activities. For more informat
+AWS Step Functions	| AWS::StepFunctions::StateMachine	| Step Functions state machine	| Step Functions API activity on state machines. For more info
+Amazon Support	| AWS::SupportAccess::Tenant	| SupportAccess tenant	| SupportAccess API activity on tenants.
+Amazon Support	| AWS::SupportAccess::TrustingAccount	| SupportAccess trusting account	| SupportAccess API activity on trusting accounts.
+Amazon Support	| AWS::SupportAccess::TrustingRole	| SupportAccess trusting role	| SupportAccess API activity on trusting roles.
+Amazon SWF	| AWS::SWF::Domain	| SWF domain	| Amazon SWF API activity on domains. For more information, se
+Amazon Textract	| AWS::Textract::Job	| Textract Job	| An Amazon Textract intelligent document analysis job, create
+Amazon WorkSpaces Thin Client	| AWS::ThinClient::Device	| Thin Client Device	| WorkSpaces Thin Client API activity on a Device.
+Amazon WorkSpaces Thin Client	| AWS::ThinClient::Environment	| Thin Client Environment	| WorkSpaces Thin Client API activity on an Environment.
+Timestamp token	| AWS::Timestamp::TimestampToken	| Timestamp token	| API activity on AWS::Timestamp::TimestampToken resources.
+Amazon Timestream	| AWS::Timestream::Database	| Timestream database	| Amazon Timestream Query API activity on databases. For more 
+Amazon Timestream	| AWS::Timestream::RegionalEndpoint	| Timestream regional endpoint	| Amazon Timestream API activity on regional endpoints.
+Amazon Timestream	| AWS::Timestream::Table	| Timestream table	| Amazon Timestream Query API activity on tables. For more inf
+Amazon Transform	| AWS::Transform::AgentInstance	| Transform agent instance	| Transform API activity on agent instances.
+Amazon Q Transform AKA AWS Transform	| AWS::Transform::Profile	| transform	| API activity on AWS::Transform::Profile resources.
+Amazon Transform Custom	| AWS::TransformCustom::Campaign	| Transform-Custom campaign	| Transform Custom API activity on campaigns.
+Amazon Transform Custom	| AWS::TransformCustom::Conversation	| Transform-Custom conversation	| Transform Custom API activity on conversations.
+Amazon Transform Custom	| AWS::TransformCustom::KnowledgeItem	| Transform-Custom knowledge item	| Transform Custom API activity on knowledge items.
+Amazon Transform Custom	| AWS::TransformCustom::Package	| Transform-Custom package	| Transform Custom API activity on packages.
+UXC account customization	| AWS::UXC::AccountCustomization	| UXC account customization	| API activity on AWS::UXC::AccountCustomization resources.
+Amazon Verified Permissions	| AWS::VerifiedPermissions::PolicyStore	| Amazon Verified Permissions	| Amazon Verified Permissions API activity on a policy store.
+Well-Architected agent recommendation	| AWS::WellArchitected::AgentRecommendation	| Well-Architected agent recommendation	| API activity on AWS::WellArchitected::AgentRecommendation re
+AWS Workload Telemetry Service	| AWS::WorkloadTelemetry::CertificateTelemetry	| Workload Telemetry certificate telemetry	| Certificate discovery and automation telemetry that AWS Work
+AWS X-Ray	| AWS::XRay::Trace	| X-Ray trace	| X-Ray API activity on traces. For more information, see AWS 
