@@ -631,3 +631,106 @@ class TestDataPlaneClassification:
             "greengrass:GetConnectivityInfo",
         ):
             assert classify_aws_data_plane(action) == "unclassified", action
+
+    def test_bedrock_mantle_is_data_event_service(self):
+        """P0 regression (Bedrock Mantle): AWS::BedrockMantle::Project is a
+        row of the CloudTrail data-event table and the dataset has the
+        ``bedrock-mantle`` IAM prefix, so the ROW_MAP row must map to it,
+        never to None. Before the fix the None row left the prefix in
+        _AWS_MANAGEMENT_ONLY_SERVICES, so bedrock-mantle:CreateInference —
+        a data event invisible to lookup_events — classified as management
+        and could be flagged as unused and auto-removed."""
+        from permtrim.analyzer.engine import (
+            _AWS_DATA_EVENT_SERVICES,
+            _AWS_MANAGEMENT_ONLY_SERVICES,
+        )
+
+        assert "bedrock-mantle" in _AWS_DATA_EVENT_SERVICES
+        assert "bedrock-mantle" not in _AWS_MANAGEMENT_ONLY_SERVICES
+
+    def test_bedrock_mantle_actions_are_not_management(self):
+        """Service-level mapping only: no per-action table is transcribed
+        for bedrock-mantle yet, so every action stays unclassified (the
+        safe side) instead of management."""
+        from permtrim.analyzer.engine import classify_aws_data_plane
+
+        assert classify_aws_data_plane("bedrock-mantle:CreateInference") == "unclassified"
+
+    def test_health_agent_is_data_event_service(self):
+        """P0 regression (Amazon Connect Health / HealthAgent): the doc
+        table lists five AWS::HealthAgent::* data-event rows and the dataset
+        has the ``health-agent`` prefix; the five None rows used to leave
+        the service in _AWS_MANAGEMENT_ONLY_SERVICES, so
+        health-agent:CreateSubscription classified as management and could
+        be flagged as unused and auto-removed."""
+        from permtrim.analyzer.engine import (
+            _AWS_DATA_EVENT_SERVICES,
+            _AWS_MANAGEMENT_ONLY_SERVICES,
+        )
+
+        assert "health-agent" in _AWS_DATA_EVENT_SERVICES
+        assert "health-agent" not in _AWS_MANAGEMENT_ONLY_SERVICES
+
+    def test_health_agent_actions_are_not_management(self):
+        """Service-level mapping only: no per-action table is transcribed
+        for health-agent yet, so every action stays unclassified (the safe
+        side) instead of management."""
+        from permtrim.analyzer.engine import classify_aws_data_plane
+
+        assert classify_aws_data_plane("health-agent:CreateSubscription") == "unclassified"
+        for action in (
+            "health-agent:GetDomain",
+            "health-agent:GetSession",
+            "health-agent:DeleteIntegration",
+        ):
+            assert classify_aws_data_plane(action) == "unclassified", action
+
+    def test_nova_act_is_data_event_service(self):
+        """P0 regression (Nova Act): AWS::NovaAct::WorkflowDefinition and
+        AWS::NovaAct::WorkflowRun are doc-table data-event rows and the
+        dataset has the ``nova-act`` prefix; the two None rows used to leave
+        the service in _AWS_MANAGEMENT_ONLY_SERVICES, so nova-act:CreateAct
+        classified as management and could be flagged as unused and
+        auto-removed."""
+        from permtrim.analyzer.engine import (
+            _AWS_DATA_EVENT_SERVICES,
+            _AWS_MANAGEMENT_ONLY_SERVICES,
+        )
+
+        assert "nova-act" in _AWS_DATA_EVENT_SERVICES
+        assert "nova-act" not in _AWS_MANAGEMENT_ONLY_SERVICES
+
+    def test_nova_act_actions_are_not_management(self):
+        """Service-level mapping only: no per-action table is transcribed
+        for nova-act yet, so every action stays unclassified (the safe
+        side) instead of management — including the documented data-event
+        calls CreateAct / CreateSession / UpdateAct / InvokeActStep."""
+        from permtrim.analyzer.engine import classify_aws_data_plane
+
+        for action in (
+            "nova-act:CreateAct",
+            "nova-act:CreateSession",
+            "nova-act:UpdateAct",
+            "nova-act:InvokeActStep",
+        ):
+            assert classify_aws_data_plane(action) == "unclassified", action
+
+    def test_engine_tables_match_generated_artifact(self):
+        """CI gap fix: engine.py embeds the two service sets the build
+        script emits into scripts/engine_tables.generated.py, and until now
+        nothing verified the two stay identical — a hand-edit of either
+        side could drift silently. CI runs scripts/build_engine_tables.py
+        --check against the committed artifact; this test pins the engine
+        copy to that same artifact."""
+        import importlib.util
+
+        import permtrim.analyzer.engine as engine
+
+        path = Path(__file__).resolve().parents[1] / "scripts" / "engine_tables.generated.py"
+        assert path.exists()
+        spec = importlib.util.spec_from_file_location("engine_tables_generated", path)
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        assert engine._AWS_DATA_EVENT_SERVICES == mod._AWS_DATA_EVENT_SERVICES
+        assert engine._AWS_MANAGEMENT_ONLY_SERVICES == mod._AWS_MANAGEMENT_ONLY_SERVICES
