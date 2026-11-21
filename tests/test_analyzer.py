@@ -911,7 +911,11 @@ class TestDataPlaneClassification:
         every inventory row, filled access levels, event-source URLs only
         where a category is documented, every action-level service inside
         the resource-type mapping, and the data-event TSV equal to the
-        inventory's classification=data rows per service."""
+        inventory's classification=data rows per service. Like the build's
+        read_tsv, an inventory row one cell short is read as an empty
+        trailing event_source_url — upload pipelines trim trailing tabs
+        (GitHub web upload did exactly that on 2026-11-21) — while anything
+        shorter is corruption and fails."""
         from permtrim.analyzer.engine import _AWS_DATA_EVENT_SERVICES
 
         root = Path(__file__).resolve().parents[1]
@@ -933,7 +937,10 @@ class TestDataPlaneClassification:
 
         inventory: dict[str, dict[str, str]] = {}
         for line in inv_lines[1:]:
-            svc, action, cls, level, _iam_url, ev_url = line.split("\t")
+            cells = line.split("\t")
+            if len(cells) == 5:
+                cells.append("")  # trailing empty event_source_url trimmed in transit
+            svc, action, cls, level, _iam_url, ev_url = cells
             assert action == action.lower(), line
             assert cls in {"data", "management", "unclassified"}, line
             assert level, line
