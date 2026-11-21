@@ -473,7 +473,7 @@ if stale:
 VALID_CLASSIFICATIONS = {"data", "management", "unclassified"}
 
 
-def read_tsv(path: Path, ncols: int) -> list[list[str]]:
+def read_tsv(path: Path, ncols: int, *, pad_last: bool = False) -> list[list[str]]:
     rows: list[list[str]] = []
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
@@ -481,6 +481,14 @@ def read_tsv(path: Path, ncols: int) -> list[list[str]]:
         cells = [c.strip() for c in line.split("\t")]
         if lineno == 1 and cells and cells[0] == "service":
             continue  # header
+        # Upload/editor pipelines trim trailing whitespace: GitHub web upload
+        # dropped the final tab of the 2026-11-21 push (the empty
+        # event_source_url cell of the last row). Canonical files are written
+        # WITHOUT trailing empty cells, and a row one cell short is completed
+        # with an empty trailing cell so both spellings parse identically.
+        # Anything shorter still fails loudly — real corruption never parses.
+        if pad_last and len(cells) == ncols - 1:
+            cells.append("")
         if len(cells) != ncols:
             raise SystemExit(f"HATA — {path}:{lineno}: {ncols} sütun bekleniyordu, {len(cells)} var")
         rows.append(cells)
@@ -498,7 +506,7 @@ for svc, action, _src in doc_data_rows:
     seen_doc.add((svc, action))
     doc_data.setdefault(svc, set()).add(action)
 
-inv_rows = read_tsv(INVENTORY_TSV, 6)
+inv_rows = read_tsv(INVENTORY_TSV, 6, pad_last=True)
 inventory: dict[str, dict[str, str]] = {}
 for svc, action, cls, _lvl, _iam_url, _ev_url in inv_rows:
     if cls not in VALID_CLASSIFICATIONS:
