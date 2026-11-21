@@ -5,7 +5,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![CI](https://github.com/nateS670/permtrim/actions/workflows/ci.yml/badge.svg)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-181%20passed-brightgreen)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-183%20passed-brightgreen)](https://github.com/nateS670/permtrim/actions/workflows/ci.yml)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue)](http://mypy-lang.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
@@ -238,7 +238,7 @@ git clone https://github.com/nateS670/permtrim.git
 cd permtrim
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[graph,azure,dev]"
-pytest          # 171 tests — NO AWS ACCOUNT / LLM REQUIRED
+pytest          # 183 tests — NO AWS ACCOUNT / LLM REQUIRED
 ```
 
 AWS authentication uses the standard boto3 chain. The **read-only** IAM
@@ -346,7 +346,7 @@ session policies, or resource-based policies either).
 | CloudTrail `lookup_events` covers the **last 90 days** only | AWS API limit | S3 → Athena pipeline (backlog) |
 | At most **10,000 events**; `window.truncated=true` when cut off — and the tightener then **refuses to run** (`insufficient_data`) | AWS API limit | Same; `--allow-truncated-window` is the explicit override |
 | Event history is **regional** | AWS API limit | Sample per region; merge |
-| `lookup_events` returns **management events only** — data-plane calls (e.g. `s3:GetObject` on objects, `sns:Publish`, `appconfig:GetLatestConfiguration`) are **never visible to permtrim**, even when a trail records data events (those go to S3 / CloudTrail Lake, a different pipeline) | AWS API design (LookupEvents does not search data events) | CloudTrail Lake / S3→Athena ingestion (backlog); until then unused-looking data-plane grants are reported as **unknown usage**, excluded from `unused_actions`, and the tightener **stops** for principals holding them (`--allow-unknown-data-plane-usage` overrides). Classification is per **ACTION**, not per service (transcribed from the CloudTrail data-event docs into `engine.py`: the complete resource-type table — 276 rows / 170 services — mapped to IAM prefixes), and **fail-closed**: documented data events (S3 object ops, `sns:Publish`, Lambda `Invoke`, DynamoDB item ops, SQS messaging, EBS direct APIs, AppConfig retrieval, SWF workflow activity, the RDS/Redshift Data APIs, ...) get the unknown-usage protection, documented management events (`s3:CreateBucket`, `sns:Subscribe`, ... ) are analyzed normally, and anything the classifier cannot **positively verify** — an action of a mixed service in **neither** table, a service in neither verification set (a brand-new AWS service, a typo'd prefix, a catalog service the tables do not cover) — defaults to the safe side: unknown usage, **explicitly listed** in `unclassified_actions` so a reviewer can tell "invisible by documentation" from "the table did not know this action". `management` — the removable side — is never inferred from IAM-catalog presence alone: AWS AppConfig sat in the catalog while its data events (since 2024-01) were invisible to `lookup_events`, so a service is only management-verified when its IAM prefix appears in **no** row of the complete data-event resource-type table. Residual limitation: actions of the ~90 data-event services without a transcribed per-action split (Glue, SageMaker, Timestream, ...) stay `unclassified` until their tables are added — manual-review noise, never a silently-removable grant |
+| `lookup_events` returns **management events only** — data-plane calls (e.g. `s3:GetObject` on objects, `sns:Publish`, `appconfig:GetLatestConfiguration`) are **never visible to permtrim**, even when a trail records data events (those go to S3 / CloudTrail Lake, a different pipeline) | AWS API design (LookupEvents does not search data events) | CloudTrail Lake / S3→Athena ingestion (backlog); until then unused-looking data-plane grants are reported as **unknown usage**, excluded from `unused_actions`, and the tightener **stops** for principals holding them (`--allow-unknown-data-plane-usage` overrides). Classification is per **ACTION**, not per service (transcribed from the CloudTrail data-event docs into `engine.py`: the complete resource-type table — 276 rows / 170 services — mapped to IAM prefixes), and **fail-closed**: documented data events (S3 object ops, `sns:Publish`, Lambda `Invoke`, DynamoDB item ops, SQS messaging, EBS direct APIs, AppConfig retrieval, SWF workflow activity, the RDS/Redshift Data APIs, Greengrass V2 core-device calls, ...) get the unknown-usage protection, documented management events (`s3:CreateBucket`, `sns:Subscribe`, ... ) are analyzed normally, and anything the classifier cannot **positively verify** — an action of a mixed service in **neither** table, a service in neither verification set (a brand-new AWS service, a typo'd prefix, a catalog service the tables do not cover) — defaults to the safe side: unknown usage, **explicitly listed** in `unclassified_actions` so a reviewer can tell "invisible by documentation" from "the table did not know this action". `management` — the removable side — is never inferred from IAM-catalog presence alone: AWS AppConfig sat in the catalog while its data events (since 2024-01) were invisible to `lookup_events`, so a service is only management-verified when its IAM prefix appears in **no** row of the complete data-event resource-type table. Residual limitation: actions of the ~90 data-event services without a transcribed per-action split (Glue, SageMaker, Timestream, ...) stay `unclassified` until their tables are added — manual-review noise, never a silently-removable grant |
 | Azure Activity Log records **control-plane** operations only; data-plane calls (Blob reads/writes, Key Vault `get`, Cosmos DB item ops, ...) live in each resource's diagnostic settings, a pipeline permtrim does not ingest | Azure API design (Activity Log is control-plane) | Resource diagnostic-settings ingestion (backlog); until then Azure data-plane grants are kept in a **separate statement** (the matcher splits `actions` vs `dataActions` and the engine carries `Statement.data_plane` end to end), reported as **unknown usage**, and the tightener **stops** — the deterministic proposer routes the *used* data-plane actions back into `dataActions` from the finding's own classification (not a hardcoded prefix), so a data-plane grant stays on the data plane for every resource provider |
 | The analyzer does **not** evaluate Resource/Condition (action-level audit view); resource scopes of the original grants are preserved where recorded and widening drafts are rejected, but unknown scope ⇒ `needs_review`, never silently `"*"` | Scoping decisions need resource-level usage data | `Resource` carried from original policies; simulator hook for full fidelity. AWS drafts must also carry a non-empty `Resource` element (the guardrail rejects a missing / empty / wrong-typed `Resource` so IAM's `"*"` default cannot widen the blast radius) |
 | Permission boundaries / SCPs / session policies / resource-based policies are **not** evaluated | Effective-permission evaluation is out of scope for v1 | Identity-based policies only (documented here); boundary ARNs surfaced in the report |
@@ -365,7 +365,7 @@ and JSON writing are handled by the base class.
 
 ```bash
 pip install -e ".[graph,azure,dev]"
-pytest                          # 171 tests: Stubber-based collector, analyzer,
+pytest                          # 183 tests: Stubber-based collector, analyzer,
                                 # guardrail (incl. a fake LLM that hallucinates), CLI
 pytest --cov=permtrim           # coverage report
 ruff check . && mypy            # lint + type checking
@@ -434,7 +434,14 @@ regression tests (each names its test):
   `test_data_event_service_without_action_table_is_unclassified`,
   `test_unknown_service_grant_is_unknown_usage_not_unused`,
   `test_unused_sns_publish_stops_tightener`,
-  `test_unused_management_action_does_not_stop_tightener`)
+  `test_unused_management_action_does_not_stop_tightener`,
+  `test_greengrass_is_data_event_service` / `test_greengrass_actions_are_not_management`
+  — the Greengrass V2 regression: `AWS::GreengrassV2::ComponentVersion` /
+  `AWS::GreengrassV2::Deployment` rows must map to the `greengrass` IAM
+  prefix, so `greengrass:GetComponentVersionArtifact` (a core-device data
+  call, invisible to `lookup_events`) can never classify as removable
+  management; per-action tables are still untranscribed, so every
+  greengrass action stays `unclassified` — the safe side)
 * Every AWS Allow statement must carry a non-empty `Resource` of the right
   shape, so IAM's implicit `"*"` default cannot widen the blast radius.
   (`TestResourceElementRequired`)
